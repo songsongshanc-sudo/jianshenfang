@@ -1,0 +1,12 @@
+.tools/
+**/node_modules/
+**/dist/
+**/target/
+**/unpackage/
+**/.hbuilderx/
+code/server/data/
+*.log
+.DS_Store
+.env
+.env.*
+!*.env.example

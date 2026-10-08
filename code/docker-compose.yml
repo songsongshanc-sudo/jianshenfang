@@ -1,0 +1,20 @@
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_DATABASE: gym
+      MYSQL_USER: gym
+      MYSQL_PASSWORD: gym_dev
+      MYSQL_ROOT_PASSWORD: gym_root
+      TZ: Asia/Shanghai
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_0900_ai_ci --default-time-zone=+08:00
+    ports:
+      - "3306:3306"
+    volumes:
+      - gym-mysql:/var/lib/mysql
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+volumes:
+  gym-mysql:

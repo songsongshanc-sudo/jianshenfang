@@ -1,0 +1,101 @@
+{
+  "pages": [
+    {
+      "path": "pages/home/home",
+      "style": { "navigationBarTitleText": "首页" }
+    },
+    {
+      "path": "pages/coach/coach",
+      "style": { "navigationBarTitleText": "预约教练" }
+    },
+    {
+      "path": "pages/join/join",
+      "style": { "navigationBarTitleText": "我要开店" }
+    },
+    {
+      "path": "pages/mine/mine",
+      "style": { "navigationBarTitleText": "我的" }
+    },
+    {
+      "path": "pages/login/login",
+      "style": { "navigationBarTitleText": "登录" }
+    },
+    {
+      "path": "pages/face/face",
+      "style": { "navigationBarTitleText": "人脸采集" }
+    }
+  ],
+  "subPackages": [
+    {
+      "root": "package-store",
+      "pages": [
+        { "path": "pages/switch/switch", "style": { "navigationBarTitleText": "门店切换" } },
+        { "path": "pages/intro/intro", "style": { "navigationBarTitleText": "门店介绍" } },
+        { "path": "pages/guide/guide", "style": { "navigationBarTitleText": "门店指引" } },
+        { "path": "pages/wifi/wifi", "style": { "navigationBarTitleText": "门店WIFI" } }
+      ]
+    },
+    {
+      "root": "package-card",
+      "pages": [
+        { "path": "pages/open/open", "style": { "navigationBarTitleText": "开通会员" } },
+        { "path": "pages/orders/orders", "style": { "navigationBarTitleText": "我的订单" } },
+        { "path": "pages/agreement/agreement", "style": { "navigationBarTitleText": "会员协议" } }
+      ]
+    },
+    {
+      "root": "package-service",
+      "pages": [
+        { "path": "pages/repair/repair", "style": { "navigationBarTitleText": "器械报修" } },
+        { "path": "pages/complaint/complaint", "style": { "navigationBarTitleText": "投诉建议" } },
+        { "path": "pages/lost/lost", "style": { "navigationBarTitleText": "失物招领" } },
+        { "path": "pages/equipment/equipment", "style": { "navigationBarTitleText": "器械指导" } },
+        { "path": "pages/review/review", "style": { "navigationBarTitleText": "好评赠卡" } }
+      ]
+    },
+    {
+      "root": "package-coach",
+      "pages": [
+        { "path": "pages/detail/detail", "style": { "navigationBarTitleText": "教练详情" } },
+        { "path": "pages/course/course", "style": { "navigationBarTitleText": "课程详情" } }
+      ]
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "健身房",
+    "navigationBarBackgroundColor": "#F8F8F8",
+    "backgroundColor": "#F8F8F8"
+  },
+  "tabBar": {
+    "color": "#666666",
+    "selectedColor": "#e85d04",
+    "backgroundColor": "#ffffff",
+    "list": [
+      {
+        "pagePath": "pages/home/home",
+        "text": "首页",
+        "iconPath": "static/tab/home.png",
+        "selectedIconPath": "static/tab/home.png"
+      },
+      {
+        "pagePath": "pages/coach/coach",
+        "text": "预约教练",
+        "iconPath": "static/tab/coach.png",
+        "selectedIconPath": "static/tab/coach.png"
+      },
+      {
+        "pagePath": "pages/join/join",
+        "text": "我要开店",
+        "iconPath": "static/tab/join.png",
+        "selectedIconPath": "static/tab/join.png"
+      },
+      {
+        "pagePath": "pages/mine/mine",
+        "text": "我的",
+        "iconPath": "static/tab/mine.png",
+        "selectedIconPath": "static/tab/mine.png"
+      }
+    ]
+  }
+}

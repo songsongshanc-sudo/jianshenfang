@@ -6,7 +6,7 @@ import org.springframework.stereotype.Component;
 import java.util.UUID;
 
 @Component
-@Profile({"local", "test"})
+@Profile({"local", "dev", "test"})
 public class MockFaceVendor implements FaceVendorPort {
 
     @Override

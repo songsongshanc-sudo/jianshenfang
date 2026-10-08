@@ -216,7 +216,8 @@ public class ContentAdminService {
         return readConfig();
     }
 
-    public ConfigView updateConfig(AdminPrincipal actor, int entryDebounceSeconds, int onlineWindowMinutes, int orderExpireMinutes) {
+    public ConfigView updateConfig(AdminPrincipal actor, int entryDebounceSeconds, int onlineWindowMinutes,
+                                   int orderExpireMinutes, String refundDailyDeductFen) {
         StoreScope.requireMaster(actor);
         requireRange(entryDebounceSeconds, 1, 600, "进店防抖秒数");
         requireRange(onlineWindowMinutes, 1, 1440, "在线人数窗口");
@@ -224,6 +225,19 @@ public class ContentAdminService {
         writeConfig("entry.debounce.seconds", String.valueOf(entryDebounceSeconds));
         writeConfig("online.window.minutes", String.valueOf(onlineWindowMinutes));
         writeConfig("order.expire.minutes", String.valueOf(orderExpireMinutes));
+        if (refundDailyDeductFen != null) {
+            String value = refundDailyDeductFen.trim();
+            if (!value.isEmpty()) {
+                try {
+                    if (Long.parseLong(value) < 0) {
+                        throw BizException.badRequest("每日扣除金额不正确");
+                    }
+                } catch (NumberFormatException exception) {
+                    throw BizException.badRequest("每日扣除金额不正确");
+                }
+            }
+            writeConfig("refund.daily.deduct.fen", value);
+        }
         return readConfig();
     }
 

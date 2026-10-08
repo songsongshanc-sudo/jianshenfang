@@ -9,6 +9,8 @@ import BannersView from "../views/BannersView.vue";
 import NoticesView from "../views/NoticesView.vue";
 import AgreementsView from "../views/AgreementsView.vue";
 import ConfigView from "../views/ConfigView.vue";
+import CardsView from "../views/CardsView.vue";
+import OrdersView from "../views/OrdersView.vue";
 import { useSessionStore } from "../stores/session";
 
 export const router = createRouter({
@@ -26,7 +28,9 @@ export const router = createRouter({
         { path: "banners", component: BannersView },
         { path: "notices", component: NoticesView },
         { path: "agreements", component: AgreementsView },
-        { path: "configs", component: ConfigView }
+        { path: "configs", component: ConfigView },
+        { path: "cards", component: CardsView },
+        { path: "orders", component: OrdersView }
       ]
     }
   ]

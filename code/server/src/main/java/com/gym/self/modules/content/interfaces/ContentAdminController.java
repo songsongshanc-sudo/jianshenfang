@@ -106,7 +106,7 @@ public class ContentAdminController {
     @PutMapping("/configs")
     public ApiResponse<ContentAdminService.ConfigView> updateConfig(@Valid @RequestBody ConfigRequest request) {
         return ApiResponse.ok(contentAdminService.updateConfig(CurrentAdmin.get(), request.entryDebounceSeconds(),
-                request.onlineWindowMinutes(), request.orderExpireMinutes()));
+                request.onlineWindowMinutes(), request.orderExpireMinutes(), request.refundDailyDeductFen()));
     }
 
     private static long parseId(String id) {
@@ -135,7 +135,7 @@ public class ContentAdminController {
     }
 
     public record ConfigRequest(@NotNull Integer entryDebounceSeconds, @NotNull Integer onlineWindowMinutes,
-                                @NotNull Integer orderExpireMinutes) {
+                                @NotNull Integer orderExpireMinutes, String refundDailyDeductFen) {
     }
 
     public record IdView(String id) {

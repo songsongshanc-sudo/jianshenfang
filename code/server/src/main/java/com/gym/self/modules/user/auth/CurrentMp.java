@@ -25,4 +25,14 @@ public final class CurrentMp {
         }
         return principal;
     }
+
+    public static Long optionalFormalUserId() {
+        Object principal = SecurityContextHolder.getContext().getAuthentication() == null
+                ? null
+                : SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        if (principal instanceof MpPrincipal mp && mp.formal()) {
+            return mp.userId();
+        }
+        return null;
+    }
 }

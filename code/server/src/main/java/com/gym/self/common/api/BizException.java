@@ -32,4 +32,8 @@ public class BizException extends RuntimeException {
     public static BizException badRequest(String message) {
         return new BizException(ErrorCode.PARAM, HttpStatus.BAD_REQUEST, message);
     }
+
+    public static BizException rejected(String message) {
+        return new BizException(ErrorCode.REJECT, HttpStatus.BAD_REQUEST, message);
+    }
 }

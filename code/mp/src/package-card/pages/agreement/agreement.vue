@@ -1,4 +1,30 @@
-<template><page-shell title="会员协议" /></template>
+<template>
+  <view class="page">
+    <text class="title">{{ doc?.title || "会员协议" }}</text>
+    <text v-if="doc" class="content">{{ doc.content }}</text>
+    <text v-else class="empty">还没有发布会员协议</text>
+  </view>
+</template>
+
 <script setup lang="ts">
-import PageShell from "../../../components/PageShell.vue";
+import { ref } from "vue";
+import { onShow } from "@dcloudio/uni-app";
+import { currentAgreement, type AgreementDoc } from "../../../api/order";
+
+const doc = ref<AgreementDoc | null>(null);
+
+onShow(async () => {
+  try {
+    doc.value = await currentAgreement();
+  } catch {
+    doc.value = null;
+  }
+});
 </script>
+
+<style scoped>
+.page { padding: 24rpx; }
+.title { display: block; font-size: 40rpx; font-weight: 700; }
+.content { display: block; margin-top: 20rpx; font-size: 28rpx; line-height: 1.6; white-space: pre-wrap; }
+.empty { display: block; margin-top: 20rpx; color: #78716c; }
+</style>

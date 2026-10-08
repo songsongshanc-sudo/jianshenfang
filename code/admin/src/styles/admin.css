@@ -100,6 +100,10 @@ body,
   width: 196px;
 }
 
+.main-card .el-form.el-form--inline .address-input {
+  width: 240px;
+}
+
 .main-card .el-form.el-form--inline .image-field {
   width: 200px;
 }

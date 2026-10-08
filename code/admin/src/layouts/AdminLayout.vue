@@ -24,8 +24,9 @@
         <el-menu-item v-if="session.role === 'MASTER'" index="/notices">公告</el-menu-item>
         <el-menu-item v-if="session.role === 'MASTER'" index="/agreements">会员协议</el-menu-item>
         <el-menu-item v-if="session.role === 'MASTER'" index="/configs">系统配置</el-menu-item>
+        <el-menu-item index="/cards">卡种</el-menu-item>
+        <el-menu-item index="/orders">订单</el-menu-item>
       </el-menu>
-      <div v-if="session.role === 'MASTER'" class="soon">卡种 · 尚未开放</div>
     </el-aside>
     <el-container>
       <el-header class="header">
@@ -64,7 +65,9 @@ const titles: Record<string, string> = {
   "/banners": "Banner",
   "/notices": "公告",
   "/agreements": "会员协议",
-  "/configs": "系统配置"
+  "/configs": "系统配置",
+  "/cards": "卡种",
+  "/orders": "订单"
 };
 
 const title = computed(() => titles[route.path] || "管理端");

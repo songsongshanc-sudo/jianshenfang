@@ -121,8 +121,7 @@ public class StoreAdminService {
 
     @Transactional
     public void replacePhones(AdminPrincipal actor, long storeId, List<PhoneInput> items) {
-        StoreScope.requireMaster(actor);
-        mustExist(storeId);
+        writable(actor, storeId);
         List<StorePhone> rows = new ArrayList<>();
         int index = 0;
         for (PhoneInput item : items) {
@@ -141,8 +140,7 @@ public class StoreAdminService {
 
     @Transactional
     public void replaceGuides(AdminPrincipal actor, long storeId, List<GuideInput> items) {
-        StoreScope.requireMaster(actor);
-        mustExist(storeId);
+        writable(actor, storeId);
         storeGuideMapper.delete(new LambdaQueryWrapper<StoreGuide>().eq(StoreGuide::getStoreId, storeId));
         LocalDateTime now = LocalDateTime.now();
         int index = 0;
@@ -275,6 +273,13 @@ public class StoreAdminService {
     private Store visible(AdminPrincipal actor, long storeId) {
         if (!actor.master() && !Long.valueOf(storeId).equals(actor.storeId())) {
             throw BizException.forbidden("不能查看其他门店");
+        }
+        return mustExist(storeId);
+    }
+
+    private Store writable(AdminPrincipal actor, long storeId) {
+        if (!actor.master() && !Long.valueOf(storeId).equals(actor.storeId())) {
+            throw BizException.forbidden("不能修改其他门店");
         }
         return mustExist(storeId);
     }

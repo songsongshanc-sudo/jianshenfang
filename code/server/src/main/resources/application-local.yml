@@ -18,3 +18,7 @@ springdoc:
     enabled: true
 knife4j:
   enable: true
+
+gym:
+  pay:
+    mock-enabled: true

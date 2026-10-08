@@ -1,7 +1,7 @@
 <template>
   <div>
     <h1>今天先从门店开始</h1>
-    <p class="lead">{{ session.role === "MASTER" ? "总账号可以配置全部门店、内容和协议。" : "门店账号只能查看本店档案。" }}</p>
+    <p class="lead">{{ session.role === "MASTER" ? "总账号可以配置全部门店、内容和协议。" : "门店账号可以设置本店电话、指引和卡种。" }}</p>
     <div class="stats">
       <div class="stat">
         <span>可见门店</span>
@@ -13,7 +13,7 @@
       </div>
       <div class="stat">
         <span>卡种</span>
-        <strong class="wait">未开放</strong>
+        <strong>{{ cardCount }}</strong>
       </div>
     </div>
   </div>
@@ -26,10 +26,13 @@ import { useSessionStore } from "../stores/session";
 
 const session = useSessionStore();
 const storeCount = ref(0);
+const cardCount = ref(0);
 
 onMounted(async () => {
   const response = await http.get<ApiBody<unknown[]>>("/api/admin/stores");
   storeCount.value = response.data.data.length;
+  const cards = await http.get<ApiBody<unknown[]>>("/api/admin/cards");
+  cardCount.value = cards.data.data.length;
 });
 </script>
 

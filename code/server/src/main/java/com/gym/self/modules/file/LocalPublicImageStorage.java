@@ -14,7 +14,7 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Component
-@Profile({"local", "test"})
+@Profile({"local", "dev", "test"})
 public class LocalPublicImageStorage implements PublicImageStorage {
 
     private final JdbcTemplate jdbcTemplate;

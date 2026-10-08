@@ -3,6 +3,8 @@ package com.gym.self.common.time;
 import org.springframework.stereotype.Component;
 
 import java.time.Clock;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
 
@@ -15,6 +17,14 @@ public class TimeProvider {
 
     public LocalTime localTime() {
         return LocalTime.now(clock);
+    }
+
+    public LocalDate today() {
+        return LocalDate.now(clock);
+    }
+
+    public LocalDateTime now() {
+        return LocalDateTime.now(clock);
     }
 
     public void use(Clock clock) {

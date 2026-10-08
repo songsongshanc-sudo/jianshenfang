@@ -1,15 +1,18 @@
 <template>
   <div>
     <h1>全部门店</h1>
-    <p class="lead">编号创建后不能在这里修改。封面和指引可以填图片地址，也可以上传本地图片。</p>
+    <p class="lead">编号创建后不能在这里修改。点「地图选点」可以在地图上选位置，省、市、地址和经纬度会自动填上，也可以再改。</p>
     <el-form :inline="true" :model="form" @submit.prevent="create">
       <el-form-item label="编号"><el-input v-model="form.code" /></el-form-item>
       <el-form-item label="名称"><el-input v-model="form.name" /></el-form-item>
       <el-form-item label="省"><el-input v-model="form.province" /></el-form-item>
       <el-form-item label="市"><el-input v-model="form.city" /></el-form-item>
-      <el-form-item label="地址"><el-input v-model="form.address" /></el-form-item>
+      <el-form-item label="地址"><el-input v-model="form.address" class="address-input" /></el-form-item>
       <el-form-item label="经度"><el-input v-model="form.longitude" /></el-form-item>
       <el-form-item label="纬度"><el-input v-model="form.latitude" /></el-form-item>
+      <el-form-item>
+        <el-button native-type="button" @click="openPick('create')">地图选点</el-button>
+      </el-form-item>
       <el-form-item>
         <el-button type="primary" native-type="submit">新增</el-button>
       </el-form-item>
@@ -20,6 +23,9 @@
       <el-table-column prop="city" label="城市" />
       <el-table-column prop="status" label="状态" width="90">
         <template #default="{ row }">{{ row.status === "OPEN" ? "营业" : "停业" }}</template>
+      </el-table-column>
+      <el-table-column label="在线人数" width="100">
+        <template #default>待闸机</template>
       </el-table-column>
       <el-table-column label="操作" width="100">
         <template #default="{ row }">
@@ -33,6 +39,9 @@
         <el-form-item label="名称"><el-input v-model="edit.name" /></el-form-item>
         <el-form-item label="省"><el-input v-model="edit.province" /></el-form-item>
         <el-form-item label="市"><el-input v-model="edit.city" /></el-form-item>
+        <el-form-item label="位置">
+          <el-button native-type="button" @click="openPick('edit')">地图选点</el-button>
+        </el-form-item>
         <el-form-item label="地址"><el-input v-model="edit.address" /></el-form-item>
         <el-form-item label="经度"><el-input v-model="edit.longitude" /></el-form-item>
         <el-form-item label="纬度"><el-input v-model="edit.latitude" /></el-form-item>
@@ -76,13 +85,15 @@
         <el-button type="primary" @click="save">保存</el-button>
       </template>
     </el-dialog>
+    <MapPicker v-model:visible="picking" :longitude="pickLongitude" :latitude="pickLatitude" @pick="onPick" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { ElMessage } from "element-plus";
 import ImageField from "../components/ImageField.vue";
+import MapPicker from "../components/MapPicker.vue";
 import { http, type ApiBody } from "../api/http";
 
 interface StoreRow {
@@ -115,6 +126,8 @@ interface GuideRow {
 
 const rows = ref<StoreRow[]>([]);
 const editing = ref(false);
+const picking = ref(false);
+const pickMode = ref<"create" | "edit">("create");
 const currentId = ref("");
 const phones = ref<PhoneRow[]>([]);
 const guides = ref<GuideRow[]>([]);
@@ -140,6 +153,23 @@ const edit = reactive({
   wifiSsid: "",
   wifiPassword: ""
 });
+
+const pickLongitude = computed(() => (pickMode.value === "create" ? form.longitude : edit.longitude));
+const pickLatitude = computed(() => (pickMode.value === "create" ? form.latitude : edit.latitude));
+
+function openPick(mode: "create" | "edit") {
+  pickMode.value = mode;
+  picking.value = true;
+}
+
+function onPick(place: { province: string; city: string; address: string; longitude: string; latitude: string }) {
+  const target = pickMode.value === "create" ? form : edit;
+  target.province = place.province;
+  target.city = place.city;
+  target.address = place.address;
+  target.longitude = place.longitude;
+  target.latitude = place.latitude;
+}
 
 async function load() {
   const response = await http.get<ApiBody<StoreRow[]>>("/api/admin/stores");

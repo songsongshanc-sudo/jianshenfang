@@ -31,3 +31,7 @@ gym:
     face-minutes: 30
   files:
     public-base-url: ${PUBLIC_FILE_BASE_URL:http://127.0.0.1:8080}
+  map:
+    tencent-key: ${TENCENT_MAP_KEY:}
+  pay:
+    mock-enabled: false

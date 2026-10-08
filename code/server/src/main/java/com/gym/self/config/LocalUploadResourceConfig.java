@@ -6,7 +6,7 @@ import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @Configuration
-@Profile({"local", "test"})
+@Profile({"local", "dev", "test"})
 public class LocalUploadResourceConfig implements WebMvcConfigurer {
 
     @Override

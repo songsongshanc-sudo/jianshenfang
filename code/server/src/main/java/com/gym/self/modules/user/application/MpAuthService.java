@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.gym.self.common.api.BizException;
 import com.gym.self.common.id.Snowflake;
 import com.gym.self.common.time.TimeProvider;
+import com.gym.self.modules.card.application.CardService;
 import com.gym.self.modules.user.auth.CurrentMp;
 import com.gym.self.modules.user.auth.MpJwt;
 import com.gym.self.modules.user.auth.MpPrincipal;
@@ -34,10 +35,12 @@ public class MpAuthService {
     private final MpTokenStore tokenStore;
     private final Snowflake snowflake;
     private final TimeProvider timeProvider;
+    private final CardService cardService;
 
     public MpAuthService(WxAuthPort wxAuthPort, FaceVendorPort faceVendorPort, GymUserMapper userMapper,
                          UserFaceMapper userFaceMapper, MemberNoService memberNoService, FaceFileService faceFileService,
-                         MpJwt mpJwt, MpTokenStore tokenStore, Snowflake snowflake, TimeProvider timeProvider) {
+                         MpJwt mpJwt, MpTokenStore tokenStore, Snowflake snowflake, TimeProvider timeProvider,
+                         CardService cardService) {
         this.wxAuthPort = wxAuthPort;
         this.faceVendorPort = faceVendorPort;
         this.userMapper = userMapper;
@@ -48,6 +51,7 @@ public class MpAuthService {
         this.tokenStore = tokenStore;
         this.snowflake = snowflake;
         this.timeProvider = timeProvider;
+        this.cardService = cardService;
     }
 
     public SessionView session(String code) {
@@ -165,12 +169,15 @@ public class MpAuthService {
 
     public MeView me(Long storeId) {
         GymUser user = mustUser(CurrentMp.formal().userId());
+        LocalDate today = timeProvider.today();
         int companionDays = 0;
         if (user.getRegisteredAt() != null) {
-            LocalDate today = LocalDate.now(TimeProvider.ZONE);
             companionDays = (int) ChronoUnit.DAYS.between(user.getRegisteredAt().toLocalDate(), today);
         }
-        return new MeView(user.getRegisterStatus(), user.getNickname(), user.getMemberNo(), companionDays, 0, false);
+        CardService.ProgressView progress = cardService.progress(user.getId(), storeId);
+        return new MeView(user.getRegisterStatus(), user.getNickname(), user.getMemberNo(), companionDays,
+                progress.consecutiveDays(), progress.cumulativeDays(), progress.consecutiveRemain(),
+                progress.storeMember());
     }
 
     private LoginView formal(GymUser user) {
@@ -211,6 +218,6 @@ public class MpAuthService {
     }
 
     public record MeView(String registerStatus, String nickname, String memberNo, int companionDays, int consecutiveDays,
-                         boolean storeMember) {
+                         int cumulativeDays, Integer consecutiveRemain, boolean storeMember) {
     }
 }

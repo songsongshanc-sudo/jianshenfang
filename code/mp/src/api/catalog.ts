@@ -79,6 +79,42 @@ export function notices() {
   return request<NoticeItem[]>({ url: "/api/mp/notices" });
 }
 
+export interface CardItem {
+  id: string;
+  name: string;
+  priceFen: number;
+  displayText: string | null;
+  validDays: number;
+  remaining: number | null;
+  purchasable: boolean;
+  lockText: string | null;
+}
+
+export interface MeProfile {
+  registerStatus: string;
+  nickname: string | null;
+  memberNo: string | null;
+  companionDays: number;
+  consecutiveDays: number;
+  cumulativeDays: number;
+  consecutiveRemain: number | null;
+  storeMember: boolean;
+}
+
+export function cards(storeId: string, placement: "HOME" | "ALL") {
+  return request<CardItem[]>({ url: `/api/mp/cards?storeId=${storeId}&placement=${placement}` });
+}
+
+export function me(storeId?: string) {
+  const suffix = storeId ? `?storeId=${storeId}` : "";
+  return request<MeProfile>({ url: `/api/mp/me${suffix}` });
+}
+
+export function yuan(fen: number) {
+  const value = fen / 100;
+  return Number.isInteger(value) ? `¥${value}` : `¥${value.toFixed(2)}`;
+}
+
 export function formatDistance(meters: number | null) {
   if (meters == null) return "";
   if (meters >= 1000) return `${(meters / 1000).toFixed(1)} km`;

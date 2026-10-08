@@ -22,6 +22,21 @@
       <button @click="goGuide">到店指引</button>
       <button @click="openContacts">联系客服</button>
     </view>
+    <scroll-view v-if="cardList.length" class="cards" scroll-x>
+      <view
+        v-for="item in cardList"
+        :key="item.id"
+        class="sku"
+        :class="{ gray: !item.purchasable }"
+        @click="openCard(item)"
+      >
+        <text class="sku-name">{{ item.name }}</text>
+        <text class="sku-price">{{ yuan(item.priceFen) }}</text>
+        <text v-if="item.displayText" class="sku-meta">{{ item.displayText }}</text>
+        <text v-if="item.remaining != null" class="sku-left">剩余 {{ item.remaining }} 张</text>
+        <text v-if="item.lockText" class="sku-lock">{{ item.lockText }}</text>
+      </view>
+    </scroll-view>
     <button class="buy" type="primary" @click="buy">开通会员</button>
     <contact-sheet :visible="sheet" :contacts="contacts" @close="sheet = false" />
   </view>
@@ -34,11 +49,14 @@ import { storeToRefs } from "pinia";
 import ContactSheet from "../../components/ContactSheet.vue";
 import {
   banners,
+  cards,
   formatDistance,
   notices,
   storeContacts,
   storeDetail,
+  yuan,
   type BannerItem,
+  type CardItem,
   type Contacts,
   type NoticeItem,
   type PublicStore,
@@ -48,6 +66,7 @@ import { useCurrentStore } from "../../stores/currentStore";
 const current = useCurrentStore();
 const { storeId } = storeToRefs(current);
 const bannerList = ref<BannerItem[]>([]);
+const cardList = ref<CardItem[]>([]);
 const noticeList = ref<NoticeItem[]>([]);
 const store = ref<PublicStore | null>(null);
 const contacts = ref<Contacts | null>(null);
@@ -85,12 +104,15 @@ async function load() {
   }
   if (!storeId.value) {
     store.value = null;
+    cardList.value = [];
     return;
   }
   try {
     store.value = await storeDetail(storeId.value, location.value?.longitude, location.value?.latitude);
+    cardList.value = await cards(storeId.value, "HOME");
   } catch {
     store.value = null;
+    cardList.value = [];
   }
 }
 
@@ -124,9 +146,21 @@ async function openContacts() {
   }
 }
 
+function openCard(item: CardItem) {
+  if (item.purchasable && storeId.value) {
+    uni.navigateTo({ url: `/package-card/pages/confirm/confirm?storeId=${storeId.value}&cardId=${item.id}` });
+    return;
+  }
+  uni.showModal({
+    title: "暂不可购买",
+    content: item.lockText || "暂时不能购买",
+    showCancel: false,
+  });
+}
+
 function buy() {
-  uni.showToast({ title: "请先登录", icon: "none" });
-  uni.navigateTo({ url: "/pages/login/login" });
+  if (!requireStore()) return;
+  uni.navigateTo({ url: `/package-card/pages/open/open?storeId=${storeId.value}` });
 }
 
 onShow(async () => {
@@ -147,5 +181,23 @@ onShow(async () => {
 .meta { display: block; margin-top: 8rpx; color: #666; font-size: 26rpx; }
 .actions { display: flex; flex-wrap: wrap; gap: 16rpx; margin-top: 20rpx; }
 .actions button { margin: 0; }
+.cards { margin-top: 20rpx; white-space: nowrap; }
+.sku {
+  display: inline-flex;
+  flex-direction: column;
+  width: 240rpx;
+  margin-right: 16rpx;
+  padding: 20rpx;
+  border-radius: 16rpx;
+  background: #fff7ed;
+  vertical-align: top;
+  white-space: normal;
+}
+.sku.gray { background: #f5f5f4; color: #78716c; }
+.sku-name { font-size: 28rpx; font-weight: 600; }
+.sku-price { margin-top: 8rpx; font-size: 32rpx; color: #c2410c; }
+.sku.gray .sku-price { color: #78716c; }
+.sku-meta, .sku-lock, .sku-left { margin-top: 8rpx; font-size: 22rpx; }
+.sku-left { color: #c2410c; }
 .buy { margin-top: 24rpx; background: #e85d04; }
 </style>

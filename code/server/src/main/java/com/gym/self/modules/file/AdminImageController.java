@@ -25,7 +25,9 @@ public class AdminImageController {
 
     @PostMapping(value = "/images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ApiResponse<ImageView> upload(@RequestParam String biz, @RequestParam("file") MultipartFile file) throws IOException {
-        StoreScope.requireMaster(CurrentAdmin.get());
+        if (!"GUIDE".equals(biz)) {
+            StoreScope.requireMaster(CurrentAdmin.get());
+        }
         if (file == null || file.isEmpty()) {
             throw BizException.badRequest("请选择图片");
         }

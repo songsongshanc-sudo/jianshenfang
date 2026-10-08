@@ -39,6 +39,7 @@
       "root": "package-card",
       "pages": [
         { "path": "pages/open/open", "style": { "navigationBarTitleText": "开通会员" } },
+        { "path": "pages/confirm/confirm", "style": { "navigationBarTitleText": "确认购买" } },
         { "path": "pages/orders/orders", "style": { "navigationBarTitleText": "我的订单" } },
         { "path": "pages/agreement/agreement", "style": { "navigationBarTitleText": "会员协议" } }
       ]

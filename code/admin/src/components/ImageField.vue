@@ -6,7 +6,10 @@
       clearable
       @update:model-value="emit('update:modelValue', $event ?? '')"
     />
-    <el-button native-type="button" @click="pick">上传</el-button>
+    <label class="upload">
+      上传
+      <input class="picker" type="file" accept="image/jpeg,image/png,image/webp,image/gif" @change="onFile" />
+    </label>
   </div>
 </template>
 
@@ -16,17 +19,13 @@ import { http, type ApiBody } from "../api/http";
 const props = defineProps<{ modelValue: string; biz: "BANNER" | "COVER" | "GUIDE" }>();
 const emit = defineEmits<{ "update:modelValue": [value: string] }>();
 
-function pick() {
-  const input = document.createElement("input");
-  input.type = "file";
-  input.accept = "image/jpeg,image/png,image/webp,image/gif";
-  input.onchange = () => {
-    const file = input.files?.[0];
-    if (file) {
-      void upload(file);
-    }
-  };
-  input.click();
+function onFile(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (file) {
+    void upload(file);
+  }
 }
 
 async function upload(file: File) {
@@ -48,5 +47,35 @@ async function upload(file: File) {
 .image-field :deep(.el-input) {
   flex: 1;
   min-width: 0;
+}
+.upload {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  height: 32px;
+  padding: 0 15px;
+  border: 1px solid #dcdfe6;
+  border-radius: 10px;
+  background: #fff;
+  color: #606266;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.upload:hover {
+  color: var(--el-color-primary);
+  border-color: var(--el-color-primary-light-7);
+  background: var(--el-color-primary-light-9);
+}
+.picker {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
 }
 </style>

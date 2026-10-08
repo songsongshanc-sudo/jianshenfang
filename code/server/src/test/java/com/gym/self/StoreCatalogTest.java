@@ -141,6 +141,37 @@ class StoreCatalogTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.versionNo").value(1))
                 .andExpect(jsonPath("$.data.content").value("购买前请阅读本协议"));
+        mockMvc.perform(put("/api/admin/stores/" + hebei + "/phones")
+                        .header("Authorization", "Bearer " + clerk)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"items":[{"phoneType":"DAY","phone":"10000000009","timeStart":"08:00","timeEnd":"20:00","sortNo":0}]}
+                                """))
+                .andExpect(status().isOk());
+        mockMvc.perform(put("/api/admin/stores/" + shanghai + "/phones")
+                        .header("Authorization", "Bearer " + clerk)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"items":[{"phoneType":"DAY","phone":"10000000009","timeStart":"08:00","timeEnd":"20:00","sortNo":0}]}
+                                """))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(put("/api/admin/stores/" + hebei + "/guides")
+                        .header("Authorization", "Bearer " + clerk)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"items":[{"imageUrl":"https://img.example/guide.jpg","caption":"进门左转","sortNo":0}]}
+                                """))
+                .andExpect(status().isOk());
+        mockMvc.perform(put("/api/admin/stores/" + shanghai + "/guides")
+                        .header("Authorization", "Bearer " + clerk)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"items":[{"imageUrl":"https://img.example/guide.jpg","caption":"进门左转","sortNo":0}]}
+                                """))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/mp/stores/" + hebei + "/guides"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].caption").value("进门左转"));
         mockMvc.perform(get("/api/admin/configs").header("Authorization", "Bearer " + clerk))
                 .andExpect(status().isForbidden());
         mockMvc.perform(get("/api/admin/configs").header("Authorization", "Bearer " + master))

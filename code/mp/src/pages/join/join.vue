@@ -2,14 +2,15 @@
   <view class="page">
     <view class="hero">
       <text class="title">我要开店</text>
-      <text class="text">{{ page.intro || "留下联系方式，顾问会和你沟通选址与投入。" }}</text>
       <text v-if="page.hotline" class="hot">咨询热线 {{ page.hotline }}</text>
     </view>
-    <view v-if="page.points || page.support || page.steps" class="brief">
-      <text v-if="page.points" class="text">{{ page.points }}</text>
-      <text v-if="page.support" class="text">{{ page.support }}</text>
-      <text v-if="page.steps" class="text">{{ page.steps }}</text>
+    <view class="brief">
+      <rich-text v-if="page.intro" :nodes="page.intro" />
+      <text v-else class="text">留下联系方式，顾问会和你沟通选址与投入。</text>
     </view>
+    <view v-if="page.points" class="brief"><rich-text :nodes="page.points" /></view>
+    <view v-if="page.support" class="brief"><rich-text :nodes="page.support" /></view>
+    <view v-if="page.steps" class="brief"><rich-text :nodes="page.steps" /></view>
     <view class="form">
       <text class="label">合作申请</text>
       <input v-model="form.name" placeholder="姓名" />

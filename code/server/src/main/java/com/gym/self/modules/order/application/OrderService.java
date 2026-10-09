@@ -7,6 +7,7 @@ import com.gym.self.common.time.TimeProvider;
 import com.gym.self.modules.adminuser.auth.AdminPrincipal;
 import com.gym.self.modules.adminuser.auth.StoreScope;
 import com.gym.self.modules.card.application.CardService;
+import com.gym.self.modules.gate.GateFaceSync;
 import com.gym.self.modules.card.domain.CardProduct;
 import com.gym.self.modules.card.domain.CardProductMapper;
 import com.gym.self.modules.card.domain.Membership;
@@ -45,12 +46,13 @@ public class OrderService {
     private final Snowflake snowflake;
     private final TimeProvider timeProvider;
     private final ObjectProvider<CourseGrant> courseGrant;
+    private final GateFaceSync gateFaceSync;
 
     public OrderService(TradeOrderMapper tradeOrderMapper, PaymentMapper paymentMapper,
                         CardProductMapper cardProductMapper, MembershipMapper membershipMapper,
                         AgreementMapper agreementMapper, AppConfigMapper appConfigMapper, StoreMapper storeMapper,
                         CardService cardService, PayGateway payGateway, Snowflake snowflake, TimeProvider timeProvider,
-                        ObjectProvider<CourseGrant> courseGrant) {
+                        ObjectProvider<CourseGrant> courseGrant, GateFaceSync gateFaceSync) {
         this.tradeOrderMapper = tradeOrderMapper;
         this.paymentMapper = paymentMapper;
         this.cardProductMapper = cardProductMapper;
@@ -63,6 +65,7 @@ public class OrderService {
         this.snowflake = snowflake;
         this.timeProvider = timeProvider;
         this.courseGrant = courseGrant;
+        this.gateFaceSync = gateFaceSync;
     }
 
     @Transactional
@@ -287,6 +290,7 @@ public class OrderService {
         }
         if (membershipMapper.selectCount(new LambdaQueryWrapper<Membership>().eq(Membership::getOrderId, orderId)) == 0) {
             membershipMapper.insert(membership(order, card, now, "PAY"));
+            gateFaceSync.onMembership(order.getUserId(), order.getStoreId());
         }
     }
 
@@ -327,6 +331,7 @@ public class OrderService {
         payment.setUpdatedAt(now);
         paymentMapper.insert(payment);
         membershipMapper.insert(membership(order, card, now, "GROUPON"));
+        gateFaceSync.onMembership(userId, storeId);
         return order.getId();
     }
 

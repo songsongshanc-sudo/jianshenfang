@@ -1,7 +1,7 @@
 <template>
   <view class="page">
     <text class="title">{{ doc?.title || "会员协议" }}</text>
-    <text v-if="doc" class="content">{{ doc.content }}</text>
+    <rich-text v-if="doc" class="content" :nodes="doc.content" />
     <text v-else class="empty">还没有发布会员协议</text>
   </view>
 </template>
@@ -25,6 +25,6 @@ onShow(async () => {
 <style scoped>
 .page { padding: 24rpx; }
 .title { display: block; font-size: 40rpx; font-weight: 700; }
-.content { display: block; margin-top: 20rpx; padding: 28rpx; border-radius: 24rpx; background: #fff; font-size: 28rpx; line-height: 1.7; white-space: pre-wrap; }
+.content { display: block; margin-top: 20rpx; padding: 28rpx; border-radius: 24rpx; background: #fff; font-size: 28rpx; line-height: 1.7; }
 .empty { display: block; margin-top: 20rpx; color: #78716c; }
 </style>

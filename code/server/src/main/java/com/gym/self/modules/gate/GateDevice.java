@@ -18,4 +18,6 @@ public class GateDevice {
     private String name;
     private String status;
     private LocalDateTime lastBeatAt;
+    private String token;
+    private String firmware;
 }

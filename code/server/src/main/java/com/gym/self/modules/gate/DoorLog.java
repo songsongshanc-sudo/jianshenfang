@@ -19,4 +19,7 @@ public class DoorLog {
     private String channel;
     private String result;
     private LocalDateTime createdAt;
+    private LocalDateTime recogTime;
+    private Integer passStatus;
+    private String memberKey;
 }

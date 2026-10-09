@@ -76,6 +76,7 @@
       <h3>到店指引</h3>
       <div v-for="(guide, index) in guides" :key="index" class="row">
         <ImageField v-model="guide.imageUrl" biz="GUIDE" />
+        <el-button v-if="guide.imageUrl" link type="primary" @click="preview?.show({ title: guide.caption || '到店指引', image: guide.imageUrl })">预览</el-button>
         <el-input v-model="guide.caption" placeholder="说明" />
         <el-button link @click="move(guides, index, -1)">上移</el-button>
         <el-button link @click="move(guides, index, 1)">下移</el-button>
@@ -88,12 +89,14 @@
       </template>
     </el-dialog>
     <MapPicker v-model:visible="picking" :longitude="pickLongitude" :latitude="pickLatitude" @pick="onPick" />
+    <ContentPreview ref="preview" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { ElMessage } from "element-plus";
+import ContentPreview from "../components/ContentPreview.vue";
 import ImageField from "../components/ImageField.vue";
 import MapPicker from "../components/MapPicker.vue";
 import { http, type ApiBody } from "../api/http";
@@ -126,6 +129,7 @@ interface GuideRow {
   caption: string;
 }
 
+const preview = ref<InstanceType<typeof ContentPreview>>();
 const rows = ref<StoreRow[]>([]);
 const online = ref<Record<string, number>>({});
 const editing = ref(false);

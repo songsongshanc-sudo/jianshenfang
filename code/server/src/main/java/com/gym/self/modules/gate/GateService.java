@@ -21,10 +21,14 @@ import org.springframework.transaction.annotation.Transactional;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 @Service
 public class GateService {
@@ -37,12 +41,15 @@ public class GateService {
     private final StoreMapper storeMapper;
     private final AppConfigMapper appConfigMapper;
     private final GateState gateState;
+    private final GateSyncTaskMapper taskMapper;
+    private final GateFaceSync gateFaceSync;
     private final Snowflake snowflake;
     private final TimeProvider timeProvider;
 
     public GateService(GateDeviceMapper gateDeviceMapper, DoorLogMapper doorLogMapper, GymUserMapper userMapper,
                        UserFaceMapper userFaceMapper, MembershipMapper membershipMapper, StoreMapper storeMapper,
-                       AppConfigMapper appConfigMapper, GateState gateState, Snowflake snowflake, TimeProvider timeProvider) {
+                       AppConfigMapper appConfigMapper, GateState gateState, GateSyncTaskMapper taskMapper,
+                       GateFaceSync gateFaceSync, Snowflake snowflake, TimeProvider timeProvider) {
         this.gateDeviceMapper = gateDeviceMapper;
         this.doorLogMapper = doorLogMapper;
         this.userMapper = userMapper;
@@ -51,22 +58,36 @@ public class GateService {
         this.storeMapper = storeMapper;
         this.appConfigMapper = appConfigMapper;
         this.gateState = gateState;
+        this.taskMapper = taskMapper;
+        this.gateFaceSync = gateFaceSync;
         this.snowflake = snowflake;
         this.timeProvider = timeProvider;
     }
 
-    public String createDevice(AdminPrincipal actor, long storeId, String name) {
+    public String createDevice(AdminPrincipal actor, long storeId, String name, String deviceSn) {
         StoreScope.requireMaster(actor);
         mustStore(storeId);
         GateDevice device = new GateDevice();
         device.setId(snowflake.next());
         device.setStoreId(storeId);
-        device.setDeviceSn("SN" + device.getId());
+        String sn = deviceSn == null ? "" : deviceSn.trim();
+        if (sn.isEmpty()) {
+            sn = "SN" + device.getId();
+        }
+        if (sn.length() > 64) {
+            throw BizException.badRequest("设备号不正确");
+        }
+        Long taken = gateDeviceMapper.selectCount(new LambdaQueryWrapper<GateDevice>().eq(GateDevice::getDeviceSn, sn));
+        if (taken != null && taken > 0) {
+            throw BizException.badRequest("设备号已存在");
+        }
+        device.setDeviceSn(sn);
         device.setSecret(HexFormat.of().formatHex(String.valueOf(snowflake.next()).getBytes(StandardCharsets.UTF_8)).substring(0, 32));
         device.setName(name.trim());
         device.setStatus("ENABLED");
         device.setLastBeatAt(null);
         gateDeviceMapper.insert(device);
+        gateFaceSync.onDeviceReady(device.getId());
         return String.valueOf(device.getId());
     }
 
@@ -86,6 +107,9 @@ public class GateService {
         GateDevice device = mustDevice(id);
         device.setStatus(status);
         gateDeviceMapper.updateById(device);
+        if ("ENABLED".equals(status)) {
+            gateFaceSync.onDeviceReady(device.getId());
+        }
     }
 
     public List<DeviceView> devices(AdminPrincipal actor, Long storeId) {
@@ -99,10 +123,104 @@ public class GateService {
             Store store = storeMapper.selectById(device.getStoreId());
             boolean online = device.getLastBeatAt() != null && device.getLastBeatAt().isAfter(onlineAfter);
             String secret = actor.master() ? device.getSecret() : null;
+            int pending = countTasks(device.getId(), "PENDING") + countTasks(device.getId(), "SENT");
+            int failed = countTasks(device.getId(), "FAILED");
+            GateSyncTask error = taskMapper.selectOne(new LambdaQueryWrapper<GateSyncTask>()
+                    .eq(GateSyncTask::getDeviceId, device.getId())
+                    .eq(GateSyncTask::getStatus, "FAILED")
+                    .orderByDesc(GateSyncTask::getUpdatedAt)
+                    .last("LIMIT 1"));
             return new DeviceView(String.valueOf(device.getId()), String.valueOf(device.getStoreId()),
                     store == null ? "" : store.getName(), device.getDeviceSn(), device.getName(), device.getStatus(),
-                    online, secret);
+                    online, secret, device.getFirmware() == null ? "" : device.getFirmware(), pending, failed,
+                    error == null || error.getLastError() == null ? "" : error.getLastError(),
+                    device.getToken() != null && !device.getToken().isBlank());
         }).toList();
+    }
+
+    public String rotateToken(AdminPrincipal actor, long id) {
+        StoreScope.requireMaster(actor);
+        GateDevice device = mustDevice(id);
+        byte[] bytes = new byte[16];
+        new SecureRandom().nextBytes(bytes);
+        device.setToken(HexFormat.of().formatHex(bytes));
+        gateDeviceMapper.updateById(device);
+        gateFaceSync.pushToken(device.getDeviceSn());
+        return device.getToken();
+    }
+
+    public void retryFailed(AdminPrincipal actor, long id) {
+        GateDevice device = mustDevice(id);
+        if (!actor.master() && (actor.storeId() == null || !actor.storeId().equals(device.getStoreId()))) {
+            throw BizException.forbidden("不能修改其他门店");
+        }
+        gateFaceSync.retryFailed(device.getId(), device.getDeviceSn());
+    }
+
+    public GateDevice deviceBySn(String sn) {
+        if (sn == null || sn.isBlank()) {
+            return null;
+        }
+        return gateDeviceMapper.selectOne(new LambdaQueryWrapper<GateDevice>().eq(GateDevice::getDeviceSn, sn.trim()));
+    }
+
+    public VendorReply vendorVerify(String sn, String userId, LocalDateTime recogTime) {
+        GateDevice device = deviceBySn(sn);
+        if (device == null) {
+            return VendorReply.missing();
+        }
+        if (userId != null && userId.startsWith("lesson:")) {
+            return VendorReply.of(3, "未注册", Map.of());
+        }
+        if (!"ENABLED".equals(device.getStatus())) {
+            return VendorReply.of(3, "设备已停用", Map.of());
+        }
+        GymUser user = findUser(userId, null);
+        Outcome outcome = decide(device, user, recogTime, userId);
+        Map<String, Object> content = new LinkedHashMap<>();
+        content.put("is_upload_record", 0);
+        if (user != null && user.getMemberNo() != null) {
+            content.put("user_id", user.getMemberNo());
+            content.put("user_name", user.getNickname() == null || user.getNickname().isBlank() ? user.getMemberNo() : user.getNickname());
+        }
+        return switch (outcome) {
+            case OPEN -> VendorReply.of(0, "开门", content);
+            case EXPIRED -> VendorReply.of(1, "已过期", content);
+            case OTHER_STORE -> VendorReply.of(3, "非本店会员", content);
+            case UNREGISTERED -> VendorReply.of(3, "未注册", Map.of());
+            case DISABLED -> VendorReply.of(3, "设备已停用", Map.of());
+        };
+    }
+
+    public void vendorRecord(String sn, String userId, LocalDateTime recogTime, int passStatus) {
+        GateDevice device = deviceBySn(sn);
+        if (device == null || already(device.getDeviceSn(), recogTime, userId)) {
+            return;
+        }
+        GymUser user = findUser(userId, null);
+        if (user == null) {
+            log(null, device, null, "REJECTED", timeProvider.now(), recogTime, passStatus, userId);
+            return;
+        }
+        if (passStatus == 0 && gateState.withinDebounce(user.getId(), device.getDeviceSn(), Duration.ofSeconds(debounceSeconds()))) {
+            return;
+        }
+        Membership pass = passStatus == 0 ? activePass(user.getId(), device.getStoreId(), timeProvider.now()) : null;
+        log(user.getId(), device, pass == null ? null : pass.getId(), passStatus == 0 && pass != null ? "SUCCESS" : "REJECTED",
+                timeProvider.now(), recogTime, passStatus, user.getMemberNo());
+    }
+
+    public void vendorStranger(String sn, String userId, String realUserId, LocalDateTime recogTime, int passStatus) {
+        GateDevice device = deviceBySn(sn);
+        String key = realUserId == null || realUserId.isBlank() ? userId : realUserId;
+        if (device == null || already(device.getDeviceSn(), recogTime, key)) {
+            return;
+        }
+        GymUser user = findUser(key, null);
+        if (user != null && "F1000001".equals(key)) {
+            user = null;
+        }
+        log(user == null ? null : user.getId(), device, null, "REJECTED", timeProvider.now(), recogTime, passStatus, key);
     }
 
     public void heartbeat(String sn, String timestamp, String nonce, String signature, String body) {
@@ -162,13 +280,14 @@ public class GateService {
             query.eq(DoorLog::getStoreId, scoped);
         }
         return doorLogMapper.selectList(query).stream().map(row -> {
-            GymUser user = userMapper.selectById(row.getUserId());
+            GymUser user = row.getUserId() == null ? null : userMapper.selectById(row.getUserId());
             UserFace face = user == null ? null : userFaceMapper.selectOne(new LambdaQueryWrapper<UserFace>()
                     .eq(UserFace::getUserId, user.getId()).eq(UserFace::getStatus, "ENROLLED")
                     .orderByDesc(UserFace::getId).last("LIMIT 1"));
+            String memberNo = user == null ? strangerName(row.getMemberKey()) : user.getMemberNo();
             return new DoorView(String.valueOf(row.getId()), String.valueOf(row.getStoreId()), row.getDeviceSn(),
                     user == null ? "" : String.valueOf(user.getId()),
-                    user == null ? "" : user.getMemberNo(), face == null ? "未采集" : "已采集", row.getResult(),
+                    memberNo, face == null ? "未采集" : "已采集", row.getResult(),
                     row.getCreatedAt());
         }).toList();
     }
@@ -179,7 +298,7 @@ public class GateService {
                         .eq(DoorLog::getStoreId, storeId)
                         .eq(DoorLog::getResult, "SUCCESS")
                         .ge(DoorLog::getCreatedAt, from))
-                .stream().map(DoorLog::getUserId).distinct().toList().size();
+                .stream().map(DoorLog::getUserId).filter(Objects::nonNull).distinct().toList().size();
     }
 
     public boolean memberNow(Long userId, long storeId) {
@@ -231,6 +350,11 @@ public class GateService {
     }
 
     private void log(long userId, GateDevice device, Long membershipId, String result, LocalDateTime now) {
+        log(userId, device, membershipId, result, now, null, null, null);
+    }
+
+    private void log(Long userId, GateDevice device, Long membershipId, String result, LocalDateTime now,
+                     LocalDateTime recogTime, Integer passStatus, String memberKey) {
         DoorLog row = new DoorLog();
         row.setId(snowflake.next());
         row.setUserId(userId);
@@ -240,7 +364,67 @@ public class GateService {
         row.setChannel("FACE");
         row.setResult(result);
         row.setCreatedAt(now);
+        row.setRecogTime(recogTime);
+        row.setPassStatus(passStatus);
+        row.setMemberKey(memberKey);
         doorLogMapper.insert(row);
+    }
+
+    private Outcome decide(GateDevice device, GymUser user, LocalDateTime recogTime, String memberKey) {
+        if (!"ENABLED".equals(device.getStatus())) {
+            return Outcome.DISABLED;
+        }
+        if (user == null || !"ACTIVE".equals(user.getRegisterStatus())) {
+            return Outcome.UNREGISTERED;
+        }
+        UserFace face = userFaceMapper.selectOne(new LambdaQueryWrapper<UserFace>()
+                .eq(UserFace::getUserId, user.getId())
+                .eq(UserFace::getStatus, "ENROLLED")
+                .orderByDesc(UserFace::getId)
+                .last("LIMIT 1"));
+        if (face == null) {
+            return Outcome.UNREGISTERED;
+        }
+        LocalDateTime now = timeProvider.now();
+        Membership pass = activePass(user.getId(), device.getStoreId(), now);
+        if (pass == null) {
+            log(user.getId(), device, null, "REJECTED", now, recogTime, 1, memberKey);
+            return anyOtherStore(user.getId(), device.getStoreId(), now) == null ? Outcome.EXPIRED : Outcome.OTHER_STORE;
+        }
+        if (gateState.withinDebounce(user.getId(), device.getDeviceSn(), Duration.ofSeconds(debounceSeconds()))) {
+            return Outcome.OPEN;
+        }
+        log(user.getId(), device, pass.getId(), "SUCCESS", now, recogTime, 0, user.getMemberNo());
+        return Outcome.OPEN;
+    }
+
+    private boolean already(String deviceSn, LocalDateTime recogTime, String memberKey) {
+        if (recogTime == null || memberKey == null || memberKey.isBlank()) {
+            return false;
+        }
+        Long count = doorLogMapper.selectCount(new LambdaQueryWrapper<DoorLog>()
+                .eq(DoorLog::getDeviceSn, deviceSn)
+                .eq(DoorLog::getRecogTime, recogTime)
+                .eq(DoorLog::getMemberKey, memberKey));
+        return count != null && count > 0;
+    }
+
+    private static String strangerName(String memberKey) {
+        if (memberKey == null || memberKey.isBlank() || "F1000001".equals(memberKey)) {
+            return "陌生人";
+        }
+        return memberKey;
+    }
+
+    private int countTasks(long deviceId, String status) {
+        Long count = taskMapper.selectCount(new LambdaQueryWrapper<GateSyncTask>()
+                .eq(GateSyncTask::getDeviceId, deviceId)
+                .eq(GateSyncTask::getStatus, status));
+        return count == null ? 0 : count.intValue();
+    }
+
+    private enum Outcome {
+        OPEN, EXPIRED, OTHER_STORE, UNREGISTERED, DISABLED
     }
 
     private GateDevice signed(String sn, String timestamp, String nonce, String signature, String body) {
@@ -314,7 +498,8 @@ public class GateService {
     }
 
     public record DeviceView(String id, String storeId, String storeName, String deviceSn, String name, String status,
-                             boolean online, String secret) {
+                             boolean online, String secret, String firmware, int pendingCount, int failedCount,
+                             String lastError, boolean signed) {
     }
 
     public record DoorView(String id, String storeId, String deviceSn, String userId, String memberNo, String face,

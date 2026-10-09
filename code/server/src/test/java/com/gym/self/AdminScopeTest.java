@@ -10,6 +10,8 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+import static org.hamcrest.Matchers.hasItem;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -49,6 +51,44 @@ class AdminScopeTest {
         mockMvc.perform(get("/api/admin/stores").header("Authorization", "Bearer " + clerk))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value(40100));
+    }
+
+    @Test
+    void masterListsEveryAccountAndCanChangePassword() throws Exception {
+        String master = login("admin", "admin123");
+        String storeId = createStore(master, "C001", "C店");
+        String clerkId = createAccount(master, "clerk-c", storeId);
+
+        mockMvc.perform(get("/api/admin/accounts").header("Authorization", "Bearer " + master))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[?(@.username == 'admin')].role", hasItem("MASTER")))
+                .andExpect(jsonPath("$.data[?(@.username == 'clerk-c')].storeName", hasItem("C店")));
+
+        String clerk = login("clerk-c", "pass1234");
+        mockMvc.perform(get("/api/admin/accounts").header("Authorization", "Bearer " + clerk))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(post("/api/admin/accounts/" + clerkId + "/password")
+                        .header("Authorization", "Bearer " + master)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"password\":\"newpass1\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.self").value(false));
+
+        mockMvc.perform(get("/api/admin/stores").header("Authorization", "Bearer " + clerk))
+                .andExpect(status().isUnauthorized());
+        String clerkAgain = login("clerk-c", "newpass1");
+
+        mockMvc.perform(delete("/api/admin/accounts/1").header("Authorization", "Bearer " + master))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(delete("/api/admin/accounts/" + clerkId).header("Authorization", "Bearer " + clerkAgain))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(delete("/api/admin/accounts/" + clerkId).header("Authorization", "Bearer " + master))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/admin/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"clerk-c\",\"password\":\"newpass1\"}"))
+                .andExpect(status().isUnauthorized());
     }
 
     private String login(String username, String password) throws Exception {

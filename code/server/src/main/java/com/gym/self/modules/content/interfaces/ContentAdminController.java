@@ -93,6 +93,12 @@ public class ContentAdminController {
         return ApiResponse.ok(contentAdminService.updateDraft(CurrentAdmin.get(), parseId(id), request.title(), request.content()));
     }
 
+    @DeleteMapping("/agreements/{id}")
+    public ApiResponse<Void> deleteAgreement(@PathVariable String id) {
+        contentAdminService.deleteAgreement(CurrentAdmin.get(), parseId(id));
+        return ApiResponse.ok(null);
+    }
+
     @PostMapping("/agreements/{id}/publish")
     public ApiResponse<ContentAdminService.AgreementView> publish(@PathVariable String id) {
         return ApiResponse.ok(contentAdminService.publish(CurrentAdmin.get(), parseId(id)));
@@ -126,7 +132,7 @@ public class ContentAdminController {
     }
 
     public record NoticeRequest(
-            @NotBlank @Size(max = 255) String content,
+            @NotBlank String content,
             Integer sortNo,
             @NotBlank String status) {
     }

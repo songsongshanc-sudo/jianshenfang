@@ -1,6 +1,7 @@
 package com.gym.self.modules.shop;
 
 import com.gym.self.common.api.BizException;
+import com.gym.self.common.html.RichHtml;
 import com.gym.self.common.id.Snowflake;
 import com.gym.self.common.time.TimeProvider;
 import com.gym.self.modules.adminuser.auth.AdminPrincipal;
@@ -142,41 +143,64 @@ public class ShopService implements CourseGrant {
         jdbc.update("UPDATE " + table + " SET status = ?, updated_at = ? WHERE id = ?", status, timeProvider.now(), id);
     }
 
-    public String saveEquipment(AdminPrincipal actor, Long id, long storeId, String code, String name, String intro, String videoUrl) {
+    public String saveEquipment(AdminPrincipal actor, Long id, long storeId, String code, String name, String intro, String imageUrl, String videoUrl) {
         StoreScope.requireMaster(actor);
         requireText(code, "请填写器械编号");
         requireText(name, "请填写器械名称");
         LocalDateTime now = timeProvider.now();
+        String html = RichHtml.clean(intro);
         long equipmentId = id == null ? snowflake.next() : id;
         if (id == null) {
             jdbc.update("""
                     INSERT INTO equipment (id, store_id, code, name, intro, created_at, updated_at)
                     VALUES (?,?,?,?,?,?,?)
-                    """, equipmentId, storeId, code.trim(), name.trim(), blank(intro), now, now);
+                    """, equipmentId, storeId, code.trim(), name.trim(), html, now, now);
         } else {
-            jdbc.update("UPDATE equipment SET code=?, name=?, intro=?, updated_at=? WHERE id=?",
-                    code.trim(), name.trim(), blank(intro), now, equipmentId);
+            int updated = jdbc.update("UPDATE equipment SET store_id=?, code=?, name=?, intro=?, updated_at=? WHERE id=?",
+                    storeId, code.trim(), name.trim(), html, now, equipmentId);
+            if (updated != 1) {
+                throw BizException.badRequest("器械不存在");
+            }
         }
         jdbc.update("DELETE FROM equipment_media WHERE equipment_id = ?", equipmentId);
+        if (imageUrl != null && !imageUrl.isBlank()) {
+            jdbc.update("INSERT INTO equipment_media (id, equipment_id, media_type, url, sort_no) VALUES (?,?, 'IMAGE', ?, 0)",
+                    snowflake.next(), equipmentId, imageUrl.trim());
+        }
         if (videoUrl != null && !videoUrl.isBlank()) {
-            jdbc.update("INSERT INTO equipment_media (id, equipment_id, media_type, url, sort_no) VALUES (?,?, 'VIDEO', ?, 0)",
+            jdbc.update("INSERT INTO equipment_media (id, equipment_id, media_type, url, sort_no) VALUES (?,?, 'VIDEO', ?, 1)",
                     snowflake.next(), equipmentId, videoUrl.trim());
         }
         return String.valueOf(equipmentId);
     }
 
+    public void deleteEquipment(AdminPrincipal actor, long id) {
+        StoreScope.requireMaster(actor);
+        Integer found = jdbc.queryForObject("SELECT COUNT(*) FROM equipment WHERE id = ?", Integer.class, id);
+        if (found == null || found == 0) {
+            throw BizException.badRequest("器械不存在");
+        }
+        jdbc.update("DELETE FROM equipment_media WHERE equipment_id = ?", id);
+        jdbc.update("DELETE FROM equipment WHERE id = ?", id);
+    }
+
     public List<Map<String, Object>> equipmentOf(long storeId) {
         return jdbc.queryForList("""
-                SELECT e.id, e.store_id, e.code, e.name, e.intro, m.url AS video_url
-                FROM equipment e LEFT JOIN equipment_media m ON m.equipment_id = e.id AND m.media_type = 'VIDEO'
+                SELECT e.id, s.name AS store_name, e.code, e.name, e.intro,
+                    (SELECT m.url FROM equipment_media m WHERE m.equipment_id = e.id AND m.media_type = 'IMAGE' ORDER BY m.sort_no LIMIT 1) AS image_url,
+                    (SELECT m.url FROM equipment_media m WHERE m.equipment_id = e.id AND m.media_type = 'VIDEO' ORDER BY m.sort_no LIMIT 1) AS video_url
+                FROM equipment e
+                JOIN store s ON s.id = e.store_id
                 WHERE e.store_id = ? ORDER BY e.id
                 """, storeId);
     }
 
     public Map<String, Object> equipmentByCode(long storeId, String code) {
         List<Map<String, Object>> rows = jdbc.queryForList("""
-                SELECT e.id, e.code, e.name, e.intro, m.url AS video_url
-                FROM equipment e LEFT JOIN equipment_media m ON m.equipment_id = e.id AND m.media_type = 'VIDEO'
+                SELECT e.id, e.code, e.name, e.intro,
+                    (SELECT m.url FROM equipment_media m WHERE m.equipment_id = e.id AND m.media_type = 'IMAGE' ORDER BY m.sort_no LIMIT 1) AS image_url,
+                    (SELECT m.url FROM equipment_media m WHERE m.equipment_id = e.id AND m.media_type = 'VIDEO' ORDER BY m.sort_no LIMIT 1) AS video_url
+                FROM equipment e
                 WHERE e.store_id = ? AND e.code = ?
                 """, storeId, code);
         if (rows.isEmpty()) {
@@ -203,6 +227,30 @@ public class ShopService implements CourseGrant {
             return jdbc.queryForList("SELECT id, store_id, platform, card_product_id, created_at FROM groupon_rule ORDER BY id DESC");
         }
         return jdbc.queryForList("SELECT id, store_id, platform, card_product_id, created_at FROM groupon_rule WHERE store_id = ? ORDER BY id DESC", scoped);
+    }
+
+    public void updateGrouponRule(AdminPrincipal actor, long id, long storeId, String platform, long cardProductId) {
+        StoreScope.requireMaster(actor);
+        if (!List.of("MEITUAN", "DOUYIN").contains(platform)) {
+            throw BizException.badRequest("平台不正确");
+        }
+        int updated = jdbc.update("UPDATE groupon_rule SET store_id=?, platform=?, card_product_id=? WHERE id=?",
+                storeId, platform, cardProductId, id);
+        if (updated != 1) {
+            throw BizException.badRequest("团购券不存在");
+        }
+    }
+
+    public void deleteGrouponRule(AdminPrincipal actor, long id) {
+        StoreScope.requireMaster(actor);
+        Integer used = jdbc.queryForObject("SELECT COUNT(*) FROM groupon_redeem WHERE rule_id = ?", Integer.class, id);
+        if (used != null && used > 0) {
+            throw BizException.badRequest("券已核销，不能删除");
+        }
+        int updated = jdbc.update("DELETE FROM groupon_rule WHERE id = ?", id);
+        if (updated != 1) {
+            throw BizException.badRequest("团购券不存在");
+        }
     }
 
     @Transactional
@@ -233,8 +281,36 @@ public class ShopService implements CourseGrant {
         StoreScope.requireMaster(actor);
         long id = snowflake.next();
         jdbc.update("INSERT INTO coach (id, store_id, name, phone, intro, created_at) VALUES (?,?,?,?,?,?)",
-                id, storeId, name.trim(), phone.trim(), blank(intro), timeProvider.now());
+                id, storeId, name.trim(), phone.trim(), RichHtml.clean(intro), timeProvider.now());
         return String.valueOf(id);
+    }
+
+    public void updateCoach(AdminPrincipal actor, long id, String name, String phone, String intro) {
+        StoreScope.requireMaster(actor);
+        requireText(name, "请填写教练姓名");
+        requireText(phone, "请填写手机号");
+        int updated = jdbc.update("UPDATE coach SET name=?, phone=?, intro=? WHERE id=?",
+                name.trim(), phone.trim(), RichHtml.clean(intro), id);
+        if (updated != 1) {
+            throw BizException.badRequest("教练不存在");
+        }
+    }
+
+    public void deleteCoach(AdminPrincipal actor, long id) {
+        StoreScope.requireMaster(actor);
+        Integer lessons = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM lesson_account a
+                JOIN course_pack p ON p.id = a.pack_id
+                WHERE p.coach_id = ?
+                """, Integer.class, id);
+        if (lessons != null && lessons > 0) {
+            throw BizException.badRequest("已有学员课时，不能删除");
+        }
+        jdbc.update("DELETE FROM course_pack WHERE coach_id = ?", id);
+        int updated = jdbc.update("DELETE FROM coach WHERE id = ?", id);
+        if (updated != 1) {
+            throw BizException.badRequest("教练不存在");
+        }
     }
 
     public String savePack(AdminPrincipal actor, long coachId, String name, long priceFen, int lessonCount, String content, String audience) {
@@ -252,7 +328,11 @@ public class ShopService implements CourseGrant {
     }
 
     public List<Map<String, Object>> coaches(long storeId) {
-        return jdbc.queryForList("SELECT id, store_id, name, intro FROM coach WHERE store_id = ? ORDER BY id", storeId);
+        return jdbc.queryForList("""
+                SELECT c.id, s.name AS store_name, c.name, c.phone, c.intro
+                FROM coach c JOIN store s ON s.id = c.store_id
+                WHERE c.store_id = ? ORDER BY c.id
+                """, storeId);
     }
 
     public List<Map<String, Object>> packs(long storeId) {
@@ -347,7 +427,28 @@ public class ShopService implements CourseGrant {
     public void saveFranchise(AdminPrincipal actor, String intro, String hotline, String points, String support, String steps) {
         StoreScope.requireMaster(actor);
         jdbc.update("UPDATE franchise_page SET intro=?, hotline=?, points=?, support=?, steps=?, updated_at=? WHERE id=1",
-                blank(intro), blank(hotline), blank(points), blank(support), blank(steps), timeProvider.now());
+                RichHtml.clean(intro), blank(hotline), RichHtml.clean(points), RichHtml.clean(support), RichHtml.clean(steps), timeProvider.now());
+    }
+
+    public void updateLead(AdminPrincipal actor, long id, String name, String phone, String budget, String province, String city) {
+        StoreScope.requireMaster(actor);
+        requireText(name, "请填写姓名");
+        requireText(phone, "请填写电话");
+        requireText(province, "请填写省份");
+        requireText(city, "请填写城市");
+        int updated = jdbc.update("UPDATE franchise_lead SET name=?, phone=?, budget=?, province=?, city=? WHERE id=?",
+                name.trim(), phone.trim(), blank(budget), province.trim(), city.trim(), id);
+        if (updated != 1) {
+            throw BizException.badRequest("申请不存在");
+        }
+    }
+
+    public void deleteLead(AdminPrincipal actor, long id) {
+        StoreScope.requireMaster(actor);
+        int updated = jdbc.update("DELETE FROM franchise_lead WHERE id = ?", id);
+        if (updated != 1) {
+            throw BizException.badRequest("申请不存在");
+        }
     }
 
     public String franchiseLead(String name, String phone, String budget, String province, String city) {
@@ -474,6 +575,7 @@ public class ShopService implements CourseGrant {
     private static String blank(String value) {
         return value == null || value.isBlank() ? null : value.trim();
     }
+
 
     private record LessonToken(long userId, long packId, Instant expire) {
     }

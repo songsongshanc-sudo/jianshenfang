@@ -52,5 +52,14 @@ class AdminImageUploadTest {
         mockMvc.perform(get(path))
                 .andExpect(status().isOk())
                 .andExpect(content().bytes(png));
+
+        byte[] mp4 = new byte[] {0, 0, 0, 24, 102, 116, 121, 112};
+        MockMultipartFile video = new MockMultipartFile("file", "clip.mp4", "video/mp4", mp4);
+        mockMvc.perform(multipart("/api/admin/files/images")
+                        .file(video)
+                        .param("biz", "EQUIPMENT_VIDEO")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.url").value(org.hamcrest.Matchers.containsString("/uploads/equipment/")));
     }
 }

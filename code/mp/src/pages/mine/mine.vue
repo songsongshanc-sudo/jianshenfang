@@ -22,6 +22,8 @@
         </view>
       </view>
       <text v-if="profile?.consecutiveRemain != null" class="remain">激活连续月卡还需 {{ profile.consecutiveRemain }} 天</text>
+      <text v-if="profile?.faceSync === 'PENDING'" class="remain">人脸正在同步到门店闸机</text>
+      <text v-if="profile?.faceSync === 'FAILED'" class="remain">人脸同步失败，请联系门店重试</text>
       <button v-if="!profile" class="hero-btn" @click="goLogin">手机号登录</button>
       <button v-else-if="!profile.storeMember" class="hero-btn" @click="buy">开通会员</button>
     </view>

@@ -32,7 +32,18 @@ public class GateController {
 
     @PostMapping("/api/admin/gates")
     public ApiResponse<IdView> create(@Valid @RequestBody CreateDevice request) {
-        return ApiResponse.ok(new IdView(gateService.createDevice(CurrentAdmin.get(), parseId(request.storeId()), request.name())));
+        return ApiResponse.ok(new IdView(gateService.createDevice(CurrentAdmin.get(), parseId(request.storeId()), request.name(), request.deviceSn())));
+    }
+
+    @PostMapping("/api/admin/gates/{id}/token")
+    public ApiResponse<TokenView> token(@PathVariable String id) {
+        return ApiResponse.ok(new TokenView(gateService.rotateToken(CurrentAdmin.get(), parseId(id))));
+    }
+
+    @PostMapping("/api/admin/gates/{id}/retry")
+    public ApiResponse<Void> retry(@PathVariable String id) {
+        gateService.retryFailed(CurrentAdmin.get(), parseId(id));
+        return ApiResponse.ok(null);
     }
 
     @PostMapping("/api/admin/gates/{id}/secret")
@@ -111,7 +122,10 @@ public class GateController {
         }
     }
 
-    public record CreateDevice(@NotBlank String storeId, @NotBlank String name) {
+    public record CreateDevice(@NotBlank String storeId, @NotBlank String name, String deviceSn) {
+    }
+
+    public record TokenView(String token) {
     }
 
     public record StatusRequest(@NotBlank String status) {

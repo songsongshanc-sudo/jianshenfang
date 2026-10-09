@@ -29,6 +29,7 @@
     <h3>到店指引</h3>
     <div v-for="(guide, index) in guides" :key="index" class="row">
       <ImageField v-model="guide.imageUrl" biz="GUIDE" />
+      <el-button v-if="guide.imageUrl" link type="primary" @click="preview?.show({ title: guide.caption || '到店指引', image: guide.imageUrl })">预览</el-button>
       <el-input v-model="guide.caption" placeholder="说明" />
       <el-button link @click="moveGuide(index, -1)">上移</el-button>
       <el-button link @click="moveGuide(index, 1)">下移</el-button>
@@ -38,12 +39,14 @@
     <div class="actions">
       <el-button type="primary" :disabled="!store" @click="save">保存电话和指引</el-button>
     </div>
+    <ContentPreview ref="preview" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { ElMessage } from "element-plus";
+import ContentPreview from "../components/ContentPreview.vue";
 import ImageField from "../components/ImageField.vue";
 import { http, type ApiBody } from "../api/http";
 
@@ -71,6 +74,7 @@ interface GuideRow {
   caption: string;
 }
 
+const preview = ref<InstanceType<typeof ContentPreview>>();
 const store = ref<StoreRow | null>(null);
 const phones = ref<PhoneRow[]>([]);
 const guides = ref<GuideRow[]>([]);

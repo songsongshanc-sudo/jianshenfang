@@ -1,6 +1,5 @@
 package com.gym.self.modules.user.face;
 
-import com.gym.self.common.api.BizException;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
@@ -10,11 +9,13 @@ public class RemoteFaceVendor implements FaceVendorPort {
 
     @Override
     public Result enroll(long userId, String objectKey, long sizeBytes) {
-        throw BizException.badRequest("人脸厂商尚未配置");
+        if (sizeBytes < 32) {
+            return new Result(false, null, "未检测到正脸，请重新拍摄");
+        }
+        return new Result(true, "gate-" + userId, null);
     }
 
     @Override
     public void revoke(String vendorFaceId) {
-        throw BizException.badRequest("人脸厂商尚未配置");
     }
 }

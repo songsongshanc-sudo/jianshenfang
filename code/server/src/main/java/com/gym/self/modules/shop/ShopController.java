@@ -7,9 +7,11 @@ import com.gym.self.modules.order.application.OrderService;
 import com.gym.self.modules.user.auth.CurrentMp;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -180,13 +182,21 @@ public class ShopController {
     public ApiResponse<IdView> equipmentSave(@Valid @RequestBody EquipmentRequest request) {
         return ApiResponse.ok(new IdView(shopService.saveEquipment(CurrentAdmin.get(),
                 request.id() == null || request.id().isBlank() ? null : parse(request.id()),
-                parse(request.storeId()), request.code(), request.name(), request.intro(), request.videoUrl())));
+                parse(request.storeId()), request.code(), request.name(), request.intro(), request.imageUrl(), request.videoUrl())));
     }
 
     @GetMapping("/api/admin/equipment")
     public ApiResponse<List<Map<String, Object>>> adminEquipment(@RequestParam String storeId) {
         StoreScopeCheck.masterOrOwn(CurrentAdmin.get(), parse(storeId));
-        return ApiResponse.ok(shopService.equipmentOf(parse(storeId)));
+        List<Map<String, Object>> rows = shopService.equipmentOf(parse(storeId));
+        rows.forEach(row -> row.put("id", String.valueOf(row.get("id"))));
+        return ApiResponse.ok(rows);
+    }
+
+    @DeleteMapping("/api/admin/equipment/{id}")
+    public ApiResponse<Void> deleteEquipment(@PathVariable String id) {
+        shopService.deleteEquipment(CurrentAdmin.get(), parse(id));
+        return ApiResponse.ok(null);
     }
 
     @PostMapping("/api/admin/groupon-rules")
@@ -197,7 +207,45 @@ public class ShopController {
 
     @GetMapping("/api/admin/groupon-rules")
     public ApiResponse<List<Map<String, Object>>> grouponRules(@RequestParam(required = false) String storeId) {
-        return ApiResponse.ok(shopService.grouponRules(CurrentAdmin.get(), optional(storeId)));
+        List<Map<String, Object>> rows = shopService.grouponRules(CurrentAdmin.get(), optional(storeId));
+        rows.forEach(row -> {
+            row.put("id", String.valueOf(row.get("id")));
+            row.put("store_id", String.valueOf(row.get("store_id")));
+            row.put("card_product_id", String.valueOf(row.get("card_product_id")));
+        });
+        return ApiResponse.ok(rows);
+    }
+
+    @PutMapping("/api/admin/groupon-rules/{id}")
+    public ApiResponse<Void> updateGroupon(@PathVariable String id, @Valid @RequestBody GrouponUpdateRequest request) {
+        shopService.updateGrouponRule(CurrentAdmin.get(), parse(id), parse(request.storeId()), request.platform(), parse(request.cardProductId()));
+        return ApiResponse.ok(null);
+    }
+
+    @DeleteMapping("/api/admin/groupon-rules/{id}")
+    public ApiResponse<Void> deleteGroupon(@PathVariable String id) {
+        shopService.deleteGrouponRule(CurrentAdmin.get(), parse(id));
+        return ApiResponse.ok(null);
+    }
+
+    @GetMapping("/api/admin/coaches")
+    public ApiResponse<List<Map<String, Object>>> adminCoaches(@RequestParam String storeId) {
+        StoreScopeCheck.masterOrOwn(CurrentAdmin.get(), parse(storeId));
+        List<Map<String, Object>> rows = shopService.coaches(parse(storeId));
+        rows.forEach(row -> row.put("id", String.valueOf(row.get("id"))));
+        return ApiResponse.ok(rows);
+    }
+
+    @PutMapping("/api/admin/coaches/{id}")
+    public ApiResponse<Void> updateCoach(@PathVariable String id, @Valid @RequestBody CoachUpdate request) {
+        shopService.updateCoach(CurrentAdmin.get(), parse(id), request.name(), request.phone(), request.intro());
+        return ApiResponse.ok(null);
+    }
+
+    @DeleteMapping("/api/admin/coaches/{id}")
+    public ApiResponse<Void> deleteCoach(@PathVariable String id) {
+        shopService.deleteCoach(CurrentAdmin.get(), parse(id));
+        return ApiResponse.ok(null);
     }
 
     @PostMapping("/api/admin/coaches")
@@ -224,7 +272,21 @@ public class ShopController {
 
     @GetMapping("/api/admin/franchise/leads")
     public ApiResponse<List<Map<String, Object>>> leads() {
-        return ApiResponse.ok(shopService.leads(CurrentAdmin.get()));
+        List<Map<String, Object>> rows = shopService.leads(CurrentAdmin.get());
+        rows.forEach(row -> row.put("id", String.valueOf(row.get("id"))));
+        return ApiResponse.ok(rows);
+    }
+
+    @PutMapping("/api/admin/franchise/leads/{id}")
+    public ApiResponse<Void> updateLead(@PathVariable String id, @Valid @RequestBody LeadRequest request) {
+        shopService.updateLead(CurrentAdmin.get(), parse(id), request.name(), request.phone(), request.budget(), request.province(), request.city());
+        return ApiResponse.ok(null);
+    }
+
+    @DeleteMapping("/api/admin/franchise/leads/{id}")
+    public ApiResponse<Void> deleteLead(@PathVariable String id) {
+        shopService.deleteLead(CurrentAdmin.get(), parse(id));
+        return ApiResponse.ok(null);
     }
 
     @PostMapping("/api/admin/messages")
@@ -284,10 +346,16 @@ public class ShopController {
     public record StatusRequest(@NotBlank String status) {
     }
 
-    public record EquipmentRequest(String id, @NotBlank String storeId, @NotBlank String code, @NotBlank String name, String intro, String videoUrl) {
+    public record EquipmentRequest(String id, @NotBlank String storeId, @NotBlank String code, @NotBlank String name, String intro, String imageUrl, String videoUrl) {
     }
 
     public record GrouponRuleRequest(@NotBlank String storeId, @NotBlank String platform, @NotBlank String code, @NotBlank String cardProductId) {
+    }
+
+    public record GrouponUpdateRequest(@NotBlank String storeId, @NotBlank String platform, @NotBlank String cardProductId) {
+    }
+
+    public record CoachUpdate(@NotBlank String name, @NotBlank String phone, String intro) {
     }
 
     public record CoachRequest(@NotBlank String storeId, @NotBlank String name, @NotBlank String phone, String intro) {

@@ -99,6 +99,7 @@ export interface MeProfile {
   cumulativeDays: number;
   consecutiveRemain: number | null;
   storeMember: boolean;
+  faceSync: string;
 }
 
 export function cards(storeId: string, placement: "HOME" | "ALL") {

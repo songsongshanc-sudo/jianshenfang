@@ -13,6 +13,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Service
 public class AdminAuthService {
@@ -85,6 +86,44 @@ public class AdminAuthService {
         return String.valueOf(account.getId());
     }
 
+    public List<AccountView> list(AdminPrincipal actor) {
+        if (!actor.master()) {
+            throw BizException.forbidden("只有总账号可以查看账号");
+        }
+        return adminUserMapper.selectList(new LambdaQueryWrapper<AdminUser>().orderByAsc(AdminUser::getId))
+                .stream()
+                .map(account -> {
+                    String storeName = "";
+                    if (account.getStoreId() != null) {
+                        Store store = storeMapper.selectById(account.getStoreId());
+                        storeName = store == null ? "" : store.getName();
+                    }
+                    return new AccountView(String.valueOf(account.getId()), account.getUsername(), account.getRole(),
+                            account.getStoreId() == null ? null : String.valueOf(account.getStoreId()),
+                            storeName, account.getStatus());
+                })
+                .toList();
+    }
+
+    public boolean changePassword(AdminPrincipal actor, long accountId, String password) {
+        if (!actor.master()) {
+            throw BizException.forbidden("只有总账号可以修改密码");
+        }
+        String next = password == null ? "" : password.trim();
+        if (next.length() < 6) {
+            throw new BizException(ErrorCode.PARAM, HttpStatus.BAD_REQUEST, "密码至少 6 位");
+        }
+        AdminUser account = adminUserMapper.selectById(accountId);
+        if (account == null) {
+            throw new BizException(ErrorCode.PARAM, HttpStatus.BAD_REQUEST, "账号不存在");
+        }
+        account.setPasswordHash(passwordEncoder.encode(next));
+        account.setUpdatedAt(LocalDateTime.now());
+        adminUserMapper.updateById(account);
+        tokenStore.revokeAdmin(accountId);
+        return actor.id() == accountId;
+    }
+
     public void disable(AdminPrincipal actor, long accountId) {
         if (!actor.master()) {
             throw BizException.forbidden("只有总账号可以停用账号");
@@ -102,6 +141,30 @@ public class AdminAuthService {
         tokenStore.revokeAdmin(accountId);
     }
 
+    public void delete(AdminPrincipal actor, long accountId) {
+        if (!actor.master()) {
+            throw BizException.forbidden("只有总账号可以删除账号");
+        }
+        if (actor.id() == accountId) {
+            throw BizException.forbidden("不能删除当前登录账号");
+        }
+        AdminUser account = adminUserMapper.selectById(accountId);
+        if (account == null) {
+            throw new BizException(ErrorCode.PARAM, HttpStatus.BAD_REQUEST, "账号不存在");
+        }
+        if ("MASTER".equals(account.getRole())) {
+            Long masters = adminUserMapper.selectCount(new LambdaQueryWrapper<AdminUser>().eq(AdminUser::getRole, "MASTER"));
+            if (masters != null && masters <= 1) {
+                throw BizException.forbidden("不能删除唯一的总账号");
+            }
+        }
+        tokenStore.revokeAdmin(accountId);
+        adminUserMapper.deleteById(accountId);
+    }
+
     public record LoginResult(String accessToken, String refreshToken, String role, Long storeId) {
+    }
+
+    public record AccountView(String id, String username, String role, String storeId, String storeName, String status) {
     }
 }

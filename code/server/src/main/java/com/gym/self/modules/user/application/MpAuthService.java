@@ -5,6 +5,7 @@ import com.gym.self.common.api.BizException;
 import com.gym.self.common.id.Snowflake;
 import com.gym.self.common.time.TimeProvider;
 import com.gym.self.modules.card.application.CardService;
+import com.gym.self.modules.gate.GateFaceSync;
 import com.gym.self.modules.user.auth.CurrentMp;
 import com.gym.self.modules.user.auth.MpJwt;
 import com.gym.self.modules.user.auth.MpPrincipal;
@@ -36,11 +37,12 @@ public class MpAuthService {
     private final Snowflake snowflake;
     private final TimeProvider timeProvider;
     private final CardService cardService;
+    private final GateFaceSync gateFaceSync;
 
     public MpAuthService(WxAuthPort wxAuthPort, FaceVendorPort faceVendorPort, GymUserMapper userMapper,
                          UserFaceMapper userFaceMapper, MemberNoService memberNoService, FaceFileService faceFileService,
                          MpJwt mpJwt, MpTokenStore tokenStore, Snowflake snowflake, TimeProvider timeProvider,
-                         CardService cardService) {
+                         CardService cardService, GateFaceSync gateFaceSync) {
         this.wxAuthPort = wxAuthPort;
         this.faceVendorPort = faceVendorPort;
         this.userMapper = userMapper;
@@ -52,6 +54,7 @@ public class MpAuthService {
         this.snowflake = snowflake;
         this.timeProvider = timeProvider;
         this.cardService = cardService;
+        this.gateFaceSync = gateFaceSync;
     }
 
     public SessionView session(String code) {
@@ -146,9 +149,10 @@ public class MpAuthService {
         face.setUserId(user.getId());
         face.setObjectKey(objectKey);
         face.setStatus("ENROLLED");
-        face.setVendorFaceId(result.vendorFaceId());
+        face.setVendorFaceId(user.getMemberNo());
         face.setCreatedAt(LocalDateTime.now());
         userFaceMapper.insert(face);
+        gateFaceSync.onFaceChanged(user.getId());
     }
 
     public LoginView enroll(String objectKey) {
@@ -174,13 +178,13 @@ public class MpAuthService {
             throw BizException.badRequest(result.reason() == null ? "人脸入库失败，请重新拍摄" : result.reason());
         }
         face.setStatus("ENROLLED");
-        face.setVendorFaceId(result.vendorFaceId());
-        userFaceMapper.insert(face);
         LocalDateTime now = LocalDateTime.now();
         user.setRegisterStatus("ACTIVE");
         user.setRegisteredAt(now);
         user.setMemberNo(memberNoService.next());
         user.setUpdatedAt(now);
+        face.setVendorFaceId(user.getMemberNo());
+        userFaceMapper.insert(face);
         userMapper.updateById(user);
         return formal(user);
     }
@@ -212,7 +216,7 @@ public class MpAuthService {
         CardService.ProgressView progress = cardService.progress(user.getId(), storeId);
         return new MeView(user.getRegisterStatus(), user.getNickname(), user.getMemberNo(), companionDays,
                 progress.consecutiveDays(), progress.cumulativeDays(), progress.consecutiveRemain(),
-                progress.storeMember());
+                progress.storeMember(), gateFaceSync.status(user.getId(), storeId));
     }
 
     private LoginView formal(GymUser user) {
@@ -253,6 +257,6 @@ public class MpAuthService {
     }
 
     public record MeView(String registerStatus, String nickname, String memberNo, int companionDays, int consecutiveDays,
-                         int cumulativeDays, Integer consecutiveRemain, boolean storeMember) {
+                         int cumulativeDays, Integer consecutiveRemain, boolean storeMember, String faceSync) {
     }
 }

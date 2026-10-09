@@ -15,7 +15,7 @@
 
     <view v-if="noticeList.length" class="notice">
       <image class="notice-icon" src="/static/icon/bell.png" mode="aspectFit" />
-      <text class="notice-text">{{ noticeList.map((item) => item.content).join("    ") }}</text>
+      <text class="notice-text">{{ noticeList.map((item) => plainNotice(item.content)).filter(Boolean).join("    ") }}</text>
     </view>
 
     <view class="store" @click="goSwitch">
@@ -107,6 +107,10 @@ const distance = computed(() => formatDistance(store.value?.distanceMeters ?? nu
 
 function statusText(status: string) {
   return status === "OPEN" ? "营业中" : "暂停营业";
+}
+
+function plainNotice(html: string) {
+  return html.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function locate() {

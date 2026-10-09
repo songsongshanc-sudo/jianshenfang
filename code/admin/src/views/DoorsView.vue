@@ -1,16 +1,18 @@
 <template>
   <div>
     <h1>进店记录</h1>
-    <p class="lead">列表只显示人脸是否已采集。总账号查看原始采集记录会写入审计，当前本机没有保存照片原图。</p>
+    <p class="lead">开门和未开门都会留下记录。陌生人没有会员编号。总账号查看采集记录会写入审计，管理端不展示照片。</p>
     <el-table :data="rows">
       <el-table-column prop="deviceSn" label="闸机" />
       <el-table-column prop="memberNo" label="会员编号" />
       <el-table-column prop="face" label="人脸" width="90" />
-      <el-table-column prop="result" label="结果" width="110" />
+      <el-table-column label="结果" width="110">
+        <template #default="{ row }">{{ row.result === "SUCCESS" ? "开门" : "未开门" }}</template>
+      </el-table-column>
       <el-table-column prop="createdAt" label="时间" />
       <el-table-column v-if="session.role === 'MASTER'" label="操作" width="120">
         <template #default="{ row }">
-          <el-button link @click="viewFace(row.userId)">查看采集</el-button>
+          <el-button v-if="row.userId" link @click="viewFace(row.userId)">查看采集</el-button>
         </template>
       </el-table-column>
     </el-table>

@@ -2,7 +2,10 @@ package com.gym.self.modules.content.application;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.gym.self.common.api.BizException;
+import com.gym.self.common.html.RichHtml;
 import com.gym.self.common.id.Snowflake;
+import com.gym.self.modules.order.domain.TradeOrder;
+import com.gym.self.modules.order.domain.TradeOrderMapper;
 import com.gym.self.modules.adminuser.auth.AdminPrincipal;
 import com.gym.self.modules.adminuser.auth.StoreScope;
 import com.gym.self.modules.content.domain.Agreement;
@@ -25,14 +28,16 @@ public class ContentAdminService {
     private final NoticeMapper noticeMapper;
     private final AgreementMapper agreementMapper;
     private final AppConfigMapper appConfigMapper;
+    private final TradeOrderMapper tradeOrderMapper;
     private final Snowflake snowflake;
 
     public ContentAdminService(BannerMapper bannerMapper, NoticeMapper noticeMapper, AgreementMapper agreementMapper,
-                               AppConfigMapper appConfigMapper, Snowflake snowflake) {
+                               AppConfigMapper appConfigMapper, TradeOrderMapper tradeOrderMapper, Snowflake snowflake) {
         this.bannerMapper = bannerMapper;
         this.noticeMapper = noticeMapper;
         this.agreementMapper = agreementMapper;
         this.appConfigMapper = appConfigMapper;
+        this.tradeOrderMapper = tradeOrderMapper;
         this.snowflake = snowflake;
     }
 
@@ -112,7 +117,7 @@ public class ContentAdminService {
         LocalDateTime now = LocalDateTime.now();
         Notice notice = new Notice();
         notice.setId(snowflake.next());
-        notice.setContent(content.trim());
+        notice.setContent(RichHtml.required(content, "请填写公告"));
         notice.setSortNo(sortNo == null ? 0 : sortNo);
         notice.setStatus(normalizeStatus(status));
         notice.setDeleted(0);
@@ -125,7 +130,7 @@ public class ContentAdminService {
     public void updateNotice(AdminPrincipal actor, long id, String content, Integer sortNo, String status) {
         StoreScope.requireMaster(actor);
         Notice notice = mustNotice(id);
-        notice.setContent(content.trim());
+        notice.setContent(RichHtml.required(content, "请填写公告"));
         notice.setSortNo(sortNo == null ? 0 : sortNo);
         notice.setStatus(normalizeStatus(status));
         notice.setUpdatedAt(LocalDateTime.now());
@@ -155,10 +160,26 @@ public class ContentAdminService {
             throw BizException.badRequest("已发布的协议不能修改");
         }
         agreement.setTitle(title.trim());
-        agreement.setContent(content);
+        agreement.setContent(RichHtml.required(content, "请填写协议正文"));
         agreement.setUpdatedAt(LocalDateTime.now());
         agreementMapper.updateById(agreement);
         return toAgreement(agreement);
+    }
+
+    public void deleteAgreement(AdminPrincipal actor, long id) {
+        StoreScope.requireMaster(actor);
+        Agreement agreement = mustAgreement(id);
+        Long used = tradeOrderMapper.selectCount(new LambdaQueryWrapper<TradeOrder>().eq(TradeOrder::getAgreementId, id));
+        if (used != null && used > 0) {
+            throw BizException.badRequest("已有订单使用这份协议，不能删除");
+        }
+        if ("PUBLISHED".equals(agreement.getStatus())) {
+            Long published = agreementMapper.selectCount(new LambdaQueryWrapper<Agreement>().eq(Agreement::getStatus, "PUBLISHED"));
+            if (published != null && published <= 1) {
+                throw BizException.badRequest("至少保留一份已发布的会员协议");
+            }
+        }
+        agreementMapper.deleteById(id);
     }
 
     public AgreementView publish(AdminPrincipal actor, long id) {

@@ -5,6 +5,9 @@ import com.gym.self.common.id.Snowflake;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -40,7 +43,42 @@ public class FaceFileService {
         if (body == null || body.length == 0 || body.length > 5 * 1024 * 1024) {
             throw BizException.badRequest("照片大小不正确");
         }
+        try {
+            Path file = path(userId, objectKey);
+            Files.createDirectories(file.getParent());
+            Files.write(file, body);
+        } catch (IOException exception) {
+            throw BizException.badRequest("照片保存失败");
+        }
         jdbcTemplate.update("UPDATE file_object SET content_type = ? WHERE object_key = ?", "uploaded:" + body.length, objectKey);
+    }
+
+    public byte[] read(long userId, String objectKey) {
+        size(userId, objectKey);
+        try {
+            Path file = path(userId, objectKey);
+            if (!Files.isRegularFile(file)) {
+                throw BizException.badRequest("没有照片");
+            }
+            return Files.readAllBytes(file);
+        } catch (BizException exception) {
+            throw exception;
+        } catch (IOException exception) {
+            throw BizException.badRequest("没有照片");
+        }
+    }
+
+    private static Path path(long userId, String objectKey) {
+        String prefix = "face/" + userId + "/";
+        if (objectKey == null || !objectKey.startsWith(prefix) || objectKey.contains("..")) {
+            throw BizException.badRequest("上传凭证不正确");
+        }
+        Path root = Path.of("data", "private", "face").toAbsolutePath().normalize();
+        Path file = root.resolve(objectKey.substring("face/".length())).normalize();
+        if (!file.startsWith(root)) {
+            throw BizException.badRequest("上传凭证不正确");
+        }
+        return file;
     }
 
     public long size(long userId, String objectKey) {

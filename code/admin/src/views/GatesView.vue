@@ -1,7 +1,7 @@
 <template>
   <div>
     <h1>闸机</h1>
-    <p class="lead">总账号登记设备。门店账号只能看本店是否在线，看不到密钥。模拟验码使用登记时下发的密钥，签名规则和正式闸机相同。</p>
+    <p class="lead">总账号登记闸机，设备号填机身上的编号。闸机长连接地址是 /ws/gate。人脸在购卡后下发到本店闸机，离线会自动补发。模拟验码仍用旧密钥，方便没有闸机时验收开门规则。</p>
     <el-form v-if="session.role === 'MASTER'" :inline="true" @submit.prevent="create">
       <el-form-item label="门店">
         <el-select v-model="form.storeId" style="width: 180px">
@@ -9,20 +9,30 @@
         </el-select>
       </el-form-item>
       <el-form-item label="名称"><el-input v-model="form.name" /></el-form-item>
+      <el-form-item label="设备号"><el-input v-model="form.deviceSn" placeholder="机身设备号" /></el-form-item>
       <el-form-item><el-button type="primary" native-type="submit">登记</el-button></el-form-item>
     </el-form>
     <el-table :data="rows">
       <el-table-column prop="storeName" label="门店" />
       <el-table-column prop="name" label="名称" />
-      <el-table-column prop="deviceSn" label="编号" />
+      <el-table-column prop="deviceSn" label="设备号" />
+      <el-table-column prop="firmware" label="固件" width="120" />
       <el-table-column label="在线" width="80">
         <template #default="{ row }">{{ row.online ? "在线" : "离线" }}</template>
       </el-table-column>
-      <el-table-column v-if="session.role === 'MASTER'" prop="secret" label="密钥" />
-      <el-table-column v-if="session.role === 'MASTER'" label="操作" width="180">
+      <el-table-column prop="pendingCount" label="待同步" width="90" />
+      <el-table-column prop="failedCount" label="失败" width="70" />
+      <el-table-column prop="lastError" label="失败原因" />
+      <el-table-column label="签名" width="80">
+        <template #default="{ row }">{{ row.signed ? "已启用" : "未启用" }}</template>
+      </el-table-column>
+      <el-table-column v-if="session.role === 'MASTER'" prop="secret" label="模拟密钥" />
+      <el-table-column label="操作" width="240">
         <template #default="{ row }">
-          <el-button link @click="reset(row.id)">重置密钥</el-button>
-          <el-button link @click="toggle(row)">{{ row.status === "ENABLED" ? "停用" : "启用" }}</el-button>
+          <el-button link @click="retry(row.id)">重试失败</el-button>
+          <el-button v-if="session.role === 'MASTER'" link @click="reset(row.id)">重置密钥</el-button>
+          <el-button v-if="session.role === 'MASTER'" link @click="token(row.id)">启用签名</el-button>
+          <el-button v-if="session.role === 'MASTER'" link @click="toggle(row)">{{ row.status === "ENABLED" ? "停用" : "启用" }}</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -55,12 +65,17 @@ interface Device {
   status: string;
   online: boolean;
   secret: string | null;
+  firmware: string;
+  pendingCount: number;
+  failedCount: number;
+  lastError: string;
+  signed: boolean;
 }
 
 const session = useSessionStore();
 const stores = ref<{ id: string; name: string }[]>([]);
 const rows = ref<Device[]>([]);
-const form = reactive({ storeId: "", name: "" });
+const form = reactive({ storeId: "", name: "", deviceSn: "" });
 const sim = reactive({ sn: "", memberNo: "" });
 const simResult = ref("");
 
@@ -76,9 +91,26 @@ async function load() {
 }
 
 async function create() {
+  if (!form.deviceSn.trim()) {
+    ElMessage.warning("请填写机身设备号");
+    return;
+  }
   await http.post("/api/admin/gates", form);
   form.name = "";
+  form.deviceSn = "";
   ElMessage.success("已登记");
+  await load();
+}
+
+async function retry(id: string) {
+  await http.post(`/api/admin/gates/${id}/retry`);
+  ElMessage.success("已重新排队");
+  await load();
+}
+
+async function token(id: string) {
+  const response = await http.post<ApiBody<{ token: string }>>(`/api/admin/gates/${id}/token`);
+  ElMessage.success("签名口令：" + response.data.data.token);
   await load();
 }
 

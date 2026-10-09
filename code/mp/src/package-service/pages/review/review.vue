@@ -1,4 +1,18 @@
-<template><page-shell title="好评赠卡" /></template>
+<template>
+  <view class="page">
+    <text class="title">好评赠卡</text>
+    <text class="hint">赠送天数还没有确定，当前不会开通或延长会员。</text>
+    <view class="tabs"><text @click="load('MEITUAN')">美团</text><text @click="load('DOUYIN')">抖音</text></view>
+    <view v-if="rows.length === 0" class="empty">暂无记录</view>
+  </view>
+</template>
 <script setup lang="ts">
-import PageShell from "../../../components/PageShell.vue";
+import { ref } from "vue";
+import { reviews } from "../../../api/shop";
+const rows = ref<unknown[]>([]);
+async function load(platform: string) { rows.value = await reviews(platform); }
 </script>
+<style scoped>
+.page { padding: 24rpx; } .title { font-size: 36rpx; font-weight: 600; } .hint, .empty { display: block; margin-top: 16rpx; color: #78716c; }
+.tabs { display: flex; gap: 24rpx; margin-top: 24rpx; }
+</style>

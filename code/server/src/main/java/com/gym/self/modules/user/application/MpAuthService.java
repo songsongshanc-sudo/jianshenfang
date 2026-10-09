@@ -98,22 +98,57 @@ public class MpAuthService {
 
     public String presign(String contentType) {
         MpPrincipal principal = CurrentMp.get();
-        if (!principal.faceEnroll()) {
-            throw BizException.unauthorized();
-        }
         GymUser user = mustUser(principal.userId());
-        if (!"NEED_FACE".equals(user.getRegisterStatus())) {
-            throw BizException.badRequest("当前不需要采集人脸");
+        if (principal.formal()) {
+            if (!"ACTIVE".equals(user.getRegisterStatus())) {
+                throw BizException.badRequest("当前不能更换人脸");
+            }
+            return faceFileService.presign(user.getId(), contentType);
+        }
+        if (!principal.faceEnroll() || !"NEED_FACE".equals(user.getRegisterStatus())) {
+            throw BizException.unauthorized();
         }
         return faceFileService.presign(user.getId(), contentType);
     }
 
     public void savePhoto(String objectKey, byte[] body) {
         MpPrincipal principal = CurrentMp.get();
-        if (!principal.faceEnroll()) {
+        if (!principal.faceEnroll() && !principal.formal()) {
             throw BizException.unauthorized();
         }
         faceFileService.save(principal.userId(), objectKey, body);
+    }
+
+    @Transactional
+    public void replaceFace(String objectKey) {
+        MpPrincipal principal = CurrentMp.formal();
+        GymUser user = mustUser(principal.userId());
+        if (!"ACTIVE".equals(user.getRegisterStatus())) {
+            throw BizException.badRequest("当前不能更换人脸");
+        }
+        UserFace current = userFaceMapper.selectOne(new LambdaQueryWrapper<UserFace>()
+                .eq(UserFace::getUserId, user.getId())
+                .eq(UserFace::getStatus, "ENROLLED")
+                .orderByDesc(UserFace::getId)
+                .last("LIMIT 1"));
+        long size = faceFileService.size(user.getId(), objectKey);
+        FaceVendorPort.Result result = faceVendorPort.enroll(user.getId(), objectKey, size);
+        if (!result.enrolled()) {
+            throw BizException.badRequest(result.reason() == null ? "人脸入库失败，请重新拍摄" : result.reason());
+        }
+        if (current != null && current.getVendorFaceId() != null) {
+            faceVendorPort.revoke(current.getVendorFaceId());
+            current.setStatus("REPLACED");
+            userFaceMapper.updateById(current);
+        }
+        UserFace face = new UserFace();
+        face.setId(snowflake.next());
+        face.setUserId(user.getId());
+        face.setObjectKey(objectKey);
+        face.setStatus("ENROLLED");
+        face.setVendorFaceId(result.vendorFaceId());
+        face.setCreatedAt(LocalDateTime.now());
+        userFaceMapper.insert(face);
     }
 
     public LoginView enroll(String objectKey) {

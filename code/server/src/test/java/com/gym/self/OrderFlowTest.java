@@ -140,25 +140,16 @@ class OrderFlowTest {
 
             mockMvc.perform(post("/api/admin/orders/" + paidId + "/refund")
                             .header("Authorization", "Bearer " + clerk))
-                    .andExpect(status().isForbidden());
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value(41000))
+                    .andExpect(jsonPath("$.message").value("购买后不能退款"));
             mockMvc.perform(post("/api/admin/orders/" + paidId + "/refund")
                             .header("Authorization", "Bearer " + master))
                     .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.message").value("请先配置每日扣除金额"));
-            mockMvc.perform(put("/api/admin/configs")
-                            .header("Authorization", "Bearer " + master)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content("""
-                                    {"entryDebounceSeconds":15,"onlineWindowMinutes":90,"orderExpireMinutes":15,"refundDailyDeductFen":"1"}
-                                    """))
-                    .andExpect(status().isOk());
-            mockMvc.perform(post("/api/admin/orders/" + paidId + "/refund")
-                            .header("Authorization", "Bearer " + master))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.data.refundFen").value(699));
-            Membership truncated = membershipMapper.selectOne(new LambdaQueryWrapper<Membership>()
+                    .andExpect(jsonPath("$.message").value("购买后不能退款"));
+            Membership kept = membershipMapper.selectOne(new LambdaQueryWrapper<Membership>()
                     .eq(Membership::getOrderId, Long.parseLong(paidId)));
-            assertEquals(LocalDateTime.of(2026, 10, 8, 12, 0), truncated.getEndAt());
+            assertEquals(LocalDateTime.of(2026, 10, 15, 12, 0), kept.getEndAt());
 
             mockMvc.perform(get("/api/admin/orders").param("storeId", otherStore)
                             .header("Authorization", "Bearer " + clerk))

@@ -16,4 +16,8 @@ public class MockFaceVendor implements FaceVendorPort {
         }
         return new Result(true, "mock-" + userId + "-" + UUID.randomUUID().toString().substring(0, 8), null);
     }
+
+    @Override
+    public void revoke(String vendorFaceId) {
+    }
 }

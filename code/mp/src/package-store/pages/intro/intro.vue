@@ -9,6 +9,7 @@
       <text class="meta">在线人数：{{ store.onlineText }}</text>
       <view class="actions">
         <button @click="goGuide">到店指引</button>
+        <button @click="goWifi">WiFi</button>
         <button @click="openContacts">联系客服</button>
         <button @click="navigate">导航</button>
       </view>
@@ -38,6 +39,10 @@ async function openContacts() {
 
 function goGuide() {
   uni.navigateTo({ url: `/package-store/pages/guide/guide?storeId=${storeId.value}` });
+}
+
+function goWifi() {
+  uni.navigateTo({ url: `/package-store/pages/wifi/wifi?storeId=${storeId.value}` });
 }
 
 function navigate() {

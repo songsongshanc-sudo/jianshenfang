@@ -51,14 +51,16 @@
         { "path": "pages/complaint/complaint", "style": { "navigationBarTitleText": "投诉建议" } },
         { "path": "pages/lost/lost", "style": { "navigationBarTitleText": "失物招领" } },
         { "path": "pages/equipment/equipment", "style": { "navigationBarTitleText": "器械指导" } },
-        { "path": "pages/review/review", "style": { "navigationBarTitleText": "好评赠卡" } }
+        { "path": "pages/review/review", "style": { "navigationBarTitleText": "好评赠卡" } },
+        { "path": "pages/messages/messages", "style": { "navigationBarTitleText": "消息" } }
       ]
     },
     {
       "root": "package-coach",
       "pages": [
         { "path": "pages/detail/detail", "style": { "navigationBarTitleText": "教练详情" } },
-        { "path": "pages/course/course", "style": { "navigationBarTitleText": "课程详情" } }
+        { "path": "pages/course/course", "style": { "navigationBarTitleText": "课程详情" } },
+        { "path": "pages/lessons/lessons", "style": { "navigationBarTitleText": "我的课程" } }
       ]
     }
   ],

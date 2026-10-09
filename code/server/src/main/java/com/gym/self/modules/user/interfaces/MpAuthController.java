@@ -70,6 +70,12 @@ public class MpAuthController {
         return ApiResponse.ok(mpAuthService.enroll(request.objectKey()));
     }
 
+    @PostMapping("/face/replace")
+    public ApiResponse<Void> replace(@Valid @RequestBody FaceRequest request) {
+        mpAuthService.replaceFace(request.objectKey());
+        return ApiResponse.ok(null);
+    }
+
     public record CodeRequest(@NotBlank String code) {
     }
 

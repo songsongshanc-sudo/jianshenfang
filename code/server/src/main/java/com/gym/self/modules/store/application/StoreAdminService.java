@@ -7,6 +7,10 @@ import com.gym.self.common.id.Snowflake;
 import com.gym.self.common.time.TimeProvider;
 import com.gym.self.modules.adminuser.auth.AdminPrincipal;
 import com.gym.self.modules.adminuser.auth.StoreScope;
+import com.gym.self.modules.gate.GateService;
+import com.gym.self.modules.user.auth.CurrentMp;
+import com.gym.self.modules.user.domain.GymUser;
+import com.gym.self.modules.user.domain.GymUserMapper;
 import com.gym.self.modules.store.domain.Store;
 import com.gym.self.modules.store.domain.StoreGuide;
 import com.gym.self.modules.store.domain.StoreGuideMapper;
@@ -39,14 +43,19 @@ public class StoreAdminService {
     private final StoreGuideMapper storeGuideMapper;
     private final Snowflake snowflake;
     private final TimeProvider timeProvider;
+    private final GateService gateService;
+    private final GymUserMapper userMapper;
 
     public StoreAdminService(StoreMapper storeMapper, StorePhoneMapper storePhoneMapper,
-                             StoreGuideMapper storeGuideMapper, Snowflake snowflake, TimeProvider timeProvider) {
+                             StoreGuideMapper storeGuideMapper, Snowflake snowflake, TimeProvider timeProvider,
+                             GateService gateService, GymUserMapper userMapper) {
         this.storeMapper = storeMapper;
         this.storePhoneMapper = storePhoneMapper;
         this.storeGuideMapper = storeGuideMapper;
         this.snowflake = snowflake;
         this.timeProvider = timeProvider;
+        this.gateService = gateService;
+        this.userMapper = userMapper;
     }
 
     public String create(AdminPrincipal actor, String code, String name, String province, String city,
@@ -299,11 +308,26 @@ public class StoreAdminService {
     }
 
     private PublicStore toPublic(Store store, BigDecimal longitude, BigDecimal latitude) {
+        Long userId = CurrentMp.optionalFormalUserId();
+        boolean member = gateService.memberNow(userId, store.getId());
+        String onlineText = member ? String.valueOf(gateService.onlineCount(store.getId())) : "开通会员后查看";
         return new PublicStore(String.valueOf(store.getId()), store.getName(), store.getProvince(), store.getCity(),
                 store.getAddress(), store.getLongitude(), store.getLatitude(), store.getCoverUrl(),
                 store.getBusinessHours(), store.getStatus(),
                 GeoDistance.meters(latitude, longitude, store.getLatitude(), store.getLongitude()),
-                true, "开通会员后查看");
+                !member, onlineText);
+    }
+
+    public WifiView wifi(long userId, long storeId) {
+        GymUser user = userMapper.selectById(userId);
+        if (user == null || !"ACTIVE".equals(user.getRegisterStatus())) {
+            throw BizException.forbidden("注册完成后才能查看 WiFi");
+        }
+        Store store = storeMapper.selectById(storeId);
+        if (store == null || Integer.valueOf(1).equals(store.getDeleted())) {
+            throw BizException.badRequest("门店不存在");
+        }
+        return new WifiView(store.getWifiSsid(), store.getWifiPassword());
     }
 
     private static LocalTime parseTime(String value) {
@@ -357,5 +381,8 @@ public class StoreAdminService {
 
     public record ContactsView(String shift, boolean nightAvailable, String nightHint, List<String> servicePhones,
                                List<String> logisticsPhones, List<String> complaintPhones, String complaintHint) {
+    }
+
+    public record WifiView(String ssid, String password) {
     }
 }

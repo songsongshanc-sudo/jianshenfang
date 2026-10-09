@@ -10,6 +10,6 @@ public class CosPublicImageStorage implements PublicImageStorage {
 
     @Override
     public String store(String biz, String contentType, byte[] body) {
-        throw BizException.badRequest("正式环境请把图片上传到对象存储，当前未配置 COS");
+        throw BizException.badRequest("正式环境的图片要上传到对象存储，服务商还没选定，当前不能上传");
     }
 }

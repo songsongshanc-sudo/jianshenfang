@@ -9,7 +9,7 @@
       </div>
       <div class="stat">
         <span>在线人数</span>
-        <strong class="wait">待闸机</strong>
+        <strong>{{ onlineCount }}</strong>
       </div>
       <div class="stat">
         <span>卡种</span>
@@ -27,12 +27,15 @@ import { useSessionStore } from "../stores/session";
 const session = useSessionStore();
 const storeCount = ref(0);
 const cardCount = ref(0);
+const onlineCount = ref(0);
 
 onMounted(async () => {
   const response = await http.get<ApiBody<unknown[]>>("/api/admin/stores");
   storeCount.value = response.data.data.length;
   const cards = await http.get<ApiBody<unknown[]>>("/api/admin/cards");
   cardCount.value = cards.data.data.length;
+  const online = await http.get<ApiBody<number>>("/api/admin/online");
+  onlineCount.value = online.data.data;
 });
 </script>
 

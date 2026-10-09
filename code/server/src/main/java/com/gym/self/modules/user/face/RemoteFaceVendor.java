@@ -12,4 +12,9 @@ public class RemoteFaceVendor implements FaceVendorPort {
     public Result enroll(long userId, String objectKey, long sizeBytes) {
         throw BizException.badRequest("人脸厂商尚未配置");
     }
+
+    @Override
+    public void revoke(String vendorFaceId) {
+        throw BizException.badRequest("人脸厂商尚未配置");
+    }
 }

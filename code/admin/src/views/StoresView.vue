@@ -25,7 +25,7 @@
         <template #default="{ row }">{{ row.status === "OPEN" ? "营业" : "停业" }}</template>
       </el-table-column>
       <el-table-column label="在线人数" width="100">
-        <template #default>待闸机</template>
+        <template #default="{ row }">{{ online[row.id] ?? "—" }}</template>
       </el-table-column>
       <el-table-column label="操作" width="100">
         <template #default="{ row }">
@@ -77,6 +77,8 @@
       <div v-for="(guide, index) in guides" :key="index" class="row">
         <ImageField v-model="guide.imageUrl" biz="GUIDE" />
         <el-input v-model="guide.caption" placeholder="说明" />
+        <el-button link @click="move(guides, index, -1)">上移</el-button>
+        <el-button link @click="move(guides, index, 1)">下移</el-button>
         <el-button link type="danger" @click="guides.splice(index, 1)">删除</el-button>
       </div>
       <el-button @click="guides.push({ imageUrl: '', caption: '' })">添加步骤</el-button>
@@ -125,6 +127,7 @@ interface GuideRow {
 }
 
 const rows = ref<StoreRow[]>([]);
+const online = ref<Record<string, number>>({});
 const editing = ref(false);
 const picking = ref(false);
 const pickMode = ref<"create" | "edit">("create");
@@ -171,9 +174,21 @@ function onPick(place: { province: string; city: string; address: string; longit
   target.latitude = place.latitude;
 }
 
+function move<T>(list: T[], index: number, delta: number) {
+  const next = index + delta;
+  if (next < 0 || next >= list.length) return;
+  const [item] = list.splice(index, 1);
+  list.splice(next, 0, item);
+}
+
 async function load() {
   const response = await http.get<ApiBody<StoreRow[]>>("/api/admin/stores");
   rows.value = response.data.data;
+  const counts = await Promise.all(rows.value.map(async (row) => {
+    const result = await http.get<ApiBody<number>>("/api/admin/online", { params: { storeId: row.id } });
+    return [row.id, result.data.data] as const;
+  }));
+  online.value = Object.fromEntries(counts);
 }
 
 async function create() {

@@ -22,13 +22,12 @@ import com.gym.self.modules.order.domain.TradeOrderMapper;
 import com.gym.self.modules.order.pay.PayGateway;
 import com.gym.self.modules.store.domain.Store;
 import com.gym.self.modules.store.domain.StoreMapper;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 @Service
@@ -45,11 +44,13 @@ public class OrderService {
     private final PayGateway payGateway;
     private final Snowflake snowflake;
     private final TimeProvider timeProvider;
+    private final ObjectProvider<CourseGrant> courseGrant;
 
     public OrderService(TradeOrderMapper tradeOrderMapper, PaymentMapper paymentMapper,
                         CardProductMapper cardProductMapper, MembershipMapper membershipMapper,
                         AgreementMapper agreementMapper, AppConfigMapper appConfigMapper, StoreMapper storeMapper,
-                        CardService cardService, PayGateway payGateway, Snowflake snowflake, TimeProvider timeProvider) {
+                        CardService cardService, PayGateway payGateway, Snowflake snowflake, TimeProvider timeProvider,
+                        ObjectProvider<CourseGrant> courseGrant) {
         this.tradeOrderMapper = tradeOrderMapper;
         this.paymentMapper = paymentMapper;
         this.cardProductMapper = cardProductMapper;
@@ -61,6 +62,7 @@ public class OrderService {
         this.payGateway = payGateway;
         this.snowflake = snowflake;
         this.timeProvider = timeProvider;
+        this.courseGrant = courseGrant;
     }
 
     @Transactional
@@ -147,6 +149,61 @@ public class OrderService {
                 prepared.signType(), prepared.paySign());
     }
 
+    @Transactional
+    public Created createCourse(long userId, long storeId, long packId, String name, long priceFen,
+                                long agreementId, int agreementVersion, String idempotencyKey) {
+        if (idempotencyKey == null || idempotencyKey.isBlank() || idempotencyKey.length() > 64) {
+            throw BizException.badRequest("请提供 Idempotency-Key");
+        }
+        TradeOrder existing = tradeOrderMapper.selectOne(new LambdaQueryWrapper<TradeOrder>()
+                .eq(TradeOrder::getUserId, userId)
+                .eq(TradeOrder::getIdempotencyKey, idempotencyKey));
+        if (existing != null) {
+            return created(existing);
+        }
+        Agreement agreement = currentAgreement();
+        if (agreement == null || !agreement.getId().equals(agreementId)
+                || agreement.getVersionNo() == null || agreement.getVersionNo() != agreementVersion) {
+            throw BizException.rejected("协议已更新，请重新阅读");
+        }
+        Store store = storeMapper.selectById(storeId);
+        if (store == null || Integer.valueOf(1).equals(store.getDeleted()) || !"OPEN".equals(store.getStatus())) {
+            throw BizException.rejected("门店已停业");
+        }
+        LocalDateTime now = timeProvider.now();
+        TradeOrder order = new TradeOrder();
+        order.setId(snowflake.next());
+        order.setOrderNo(String.valueOf(order.getId()));
+        order.setUserId(userId);
+        order.setStoreId(storeId);
+        order.setBizType("COURSE");
+        order.setProductId(packId);
+        order.setProductName(name);
+        order.setAmountFen(priceFen);
+        order.setStatus("PENDING");
+        order.setAgreementId(agreement.getId());
+        order.setAgreementVersion(agreement.getVersionNo());
+        order.setIdempotencyKey(idempotencyKey);
+        order.setExpireAt(now.plusMinutes(expireMinutes()));
+        order.setCreatedAt(now);
+        order.setUpdatedAt(now);
+        tradeOrderMapper.insert(order);
+        PayGateway.Prepared prepared = payGateway.prepare(order.getOrderNo(), name, priceFen);
+        Payment payment = new Payment();
+        payment.setId(snowflake.next());
+        payment.setOrderId(order.getId());
+        payment.setMchId(prepared.mchId());
+        payment.setPrepayId(prepared.prepayId());
+        payment.setAmountFen(priceFen);
+        payment.setStatus("CREATED");
+        payment.setCreatedAt(now);
+        payment.setUpdatedAt(now);
+        paymentMapper.insert(payment);
+        return new Created(String.valueOf(order.getId()), order.getOrderNo(), priceFen, order.getStatus(),
+                payGateway.mockEnabled(), prepared.timeStamp(), prepared.nonceStr(), prepared.payPackage(),
+                prepared.signType(), prepared.paySign());
+    }
+
     public OrderView detail(long userId, long orderId) {
         TradeOrder order = mustOwn(userId, orderId);
         return toView(order);
@@ -201,7 +258,8 @@ public class OrderService {
             throw BizException.rejected("订单不能支付");
         }
         LocalDateTime now = timeProvider.now();
-        CardProduct card = cardProductMapper.selectById(order.getProductId());
+        boolean course = "COURSE".equals(order.getBizType());
+        CardProduct card = course ? null : cardProductMapper.selectById(order.getProductId());
         boolean limited = card != null && card.getStockTotal() != null;
         if (limited) {
             int sold = "PENDING".equals(order.getStatus())
@@ -220,9 +278,56 @@ public class OrderService {
         payment.setRawNotify(rawNotify);
         payment.setUpdatedAt(now);
         paymentMapper.updateById(payment);
-        if (membershipMapper.selectCount(new LambdaQueryWrapper<Membership>().eq(Membership::getOrderId, orderId)) == 0) {
-            membershipMapper.insert(membership(order, card, now));
+        if (course) {
+            CourseGrant grant = courseGrant.getIfAvailable();
+            if (grant != null) {
+                grant.onPaid(order);
+            }
+            return;
         }
+        if (membershipMapper.selectCount(new LambdaQueryWrapper<Membership>().eq(Membership::getOrderId, orderId)) == 0) {
+            membershipMapper.insert(membership(order, card, now, "PAY"));
+        }
+    }
+
+    @Transactional
+    public long grantGroupon(long userId, long storeId, long cardProductId) {
+        CardProduct card = cardProductMapper.selectById(cardProductId);
+        if (card == null || !Long.valueOf(storeId).equals(card.getStoreId()) || !"ON".equals(card.getStatus())) {
+            throw BizException.rejected("卡种不存在");
+        }
+        LocalDateTime now = timeProvider.now();
+        if (card.getStockTotal() != null && cardProductMapper.sellOne(card.getId(), now) != 1) {
+            throw BizException.rejected("库存不足");
+        }
+        TradeOrder order = new TradeOrder();
+        order.setId(snowflake.next());
+        order.setOrderNo(String.valueOf(order.getId()));
+        order.setUserId(userId);
+        order.setStoreId(storeId);
+        order.setBizType("CARD");
+        order.setProductId(card.getId());
+        order.setProductName(card.getName());
+        order.setAmountFen(0L);
+        order.setStatus("PAID");
+        order.setPaidAt(now);
+        order.setExpireAt(now);
+        order.setIdempotencyKey("groupon-" + order.getId());
+        order.setCreatedAt(now);
+        order.setUpdatedAt(now);
+        tradeOrderMapper.insert(order);
+        Payment payment = new Payment();
+        payment.setId(snowflake.next());
+        payment.setOrderId(order.getId());
+        payment.setMchId("groupon");
+        payment.setAmountFen(0L);
+        payment.setStatus("SUCCESS");
+        payment.setTransactionId("groupon-" + order.getId());
+        payment.setCreatedAt(now);
+        payment.setUpdatedAt(now);
+        paymentMapper.insert(payment);
+        membershipMapper.insert(membership(order, card, now, "GROUPON"));
+        return order.getId();
     }
 
     public int closeExpired() {
@@ -255,48 +360,8 @@ public class OrderService {
         }).toList();
     }
 
-    @Transactional
     public RefundResult refund(AdminPrincipal actor, long orderId) {
-        TradeOrder peek = tradeOrderMapper.selectById(orderId);
-        if (peek == null) {
-            throw BizException.badRequest("订单不存在");
-        }
-        if (!actor.master() && !Long.valueOf(peek.getStoreId()).equals(actor.storeId())) {
-            throw BizException.forbidden("不能查看其他门店");
-        }
-        if (!actor.master()) {
-            throw BizException.forbidden("只有总账号可以退款");
-        }
-        lock(orderId);
-        TradeOrder order = reload(orderId);
-        if (!"PAID".equals(order.getStatus())) {
-            throw BizException.rejected("只有已支付订单可以退款");
-        }
-        long daily = dailyDeductFen();
-        LocalDate paidDay = order.getPaidAt().toLocalDate();
-        long days = ChronoUnit.DAYS.between(paidDay, timeProvider.today()) + 1;
-        if (days < 1) {
-            days = 1;
-        }
-        long refundFen = Math.max(0, order.getAmountFen() - days * daily);
-        Payment payment = paymentMapper.selectOne(new LambdaQueryWrapper<Payment>().eq(Payment::getOrderId, orderId));
-        payGateway.refund(order.getOrderNo(), payment == null ? null : payment.getTransactionId(), refundFen);
-        LocalDateTime now = timeProvider.now();
-        order.setStatus("REFUNDED");
-        order.setUpdatedAt(now);
-        tradeOrderMapper.updateById(order);
-        if (payment != null) {
-            payment.setStatus("REFUNDED");
-            payment.setUpdatedAt(now);
-            paymentMapper.updateById(payment);
-        }
-        Membership membership = membershipMapper.selectOne(new LambdaQueryWrapper<Membership>()
-                .eq(Membership::getOrderId, orderId));
-        if (membership != null && membership.getEndAt().isAfter(now)) {
-            membership.setEndAt(now);
-            membershipMapper.updateById(membership);
-        }
-        return new RefundResult(refundFen);
+        throw BizException.rejected("购买后不能退款");
     }
 
     @Transactional
@@ -318,7 +383,9 @@ public class OrderService {
         order.setStatus("CLOSED");
         order.setUpdatedAt(now);
         tradeOrderMapper.updateById(order);
-        cardProductMapper.releaseOne(order.getProductId(), now);
+        if ("CARD".equals(order.getBizType())) {
+            cardProductMapper.releaseOne(order.getProductId(), now);
+        }
         Payment payment = paymentMapper.selectOne(new LambdaQueryWrapper<Payment>().eq(Payment::getOrderId, order.getId()));
         if (payment != null && "CREATED".equals(payment.getStatus())) {
             payment.setStatus("CLOSED");
@@ -327,7 +394,7 @@ public class OrderService {
         }
     }
 
-    private Membership membership(TradeOrder order, CardProduct card, LocalDateTime paidAt) {
+    private Membership membership(TradeOrder order, CardProduct card, LocalDateTime paidAt, String source) {
         LocalDateTime start = paidAt;
         Membership latest = membershipMapper.selectOne(new LambdaQueryWrapper<Membership>()
                 .eq(Membership::getUserId, order.getUserId())
@@ -349,7 +416,7 @@ public class OrderService {
         membership.setStoreId(order.getStoreId());
         membership.setOrderId(order.getId());
         membership.setCardProductId(order.getProductId());
-        membership.setSource("PAY");
+        membership.setSource(source);
         membership.setStartAt(start);
         membership.setEndAt(end);
         membership.setStatus("ACTIVE");
@@ -371,22 +438,6 @@ public class OrderService {
             return 15;
         }
         return Integer.parseInt(config.getConfigValue());
-    }
-
-    private long dailyDeductFen() {
-        AppConfig config = appConfigMapper.selectById("refund.daily.deduct.fen");
-        if (config == null || config.getConfigValue() == null || config.getConfigValue().isBlank()) {
-            throw BizException.rejected("请先配置每日扣除金额");
-        }
-        try {
-            long value = Long.parseLong(config.getConfigValue().trim());
-            if (value < 0) {
-                throw BizException.rejected("请先配置每日扣除金额");
-            }
-            return value;
-        } catch (NumberFormatException exception) {
-            throw BizException.rejected("请先配置每日扣除金额");
-        }
     }
 
     private void lock(long orderId) {

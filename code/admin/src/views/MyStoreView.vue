@@ -30,6 +30,8 @@
     <div v-for="(guide, index) in guides" :key="index" class="row">
       <ImageField v-model="guide.imageUrl" biz="GUIDE" />
       <el-input v-model="guide.caption" placeholder="说明" />
+      <el-button link @click="moveGuide(index, -1)">上移</el-button>
+      <el-button link @click="moveGuide(index, 1)">下移</el-button>
       <el-button link type="danger" @click="guides.splice(index, 1)">删除</el-button>
     </div>
     <el-button @click="guides.push({ imageUrl: '', caption: '' })">添加步骤</el-button>
@@ -89,6 +91,13 @@ onMounted(async () => {
   const guideRes = await http.get<ApiBody<GuideRow[]>>(`/api/admin/stores/${store.value.id}/guides`);
   guides.value = guideRes.data.data.map((item) => ({ imageUrl: item.imageUrl, caption: item.caption }));
 });
+
+function moveGuide(index: number, delta: number) {
+  const next = index + delta;
+  if (next < 0 || next >= guides.value.length) return;
+  const [item] = guides.value.splice(index, 1);
+  guides.value.splice(next, 0, item);
+}
 
 async function save() {
   if (!store.value) {

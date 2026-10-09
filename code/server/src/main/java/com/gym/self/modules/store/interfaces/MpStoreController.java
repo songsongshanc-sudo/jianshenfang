@@ -3,6 +3,7 @@ package com.gym.self.modules.store.interfaces;
 import com.gym.self.common.api.ApiResponse;
 import com.gym.self.common.api.BizException;
 import com.gym.self.modules.store.application.StoreAdminService;
+import com.gym.self.modules.user.auth.CurrentMp;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -47,6 +48,15 @@ public class MpStoreController {
     @GetMapping("/{id}/guides")
     public ApiResponse<List<StoreAdminService.GuideView>> guides(@PathVariable String id) {
         return ApiResponse.ok(storeAdminService.publicGuides(parseId(id)));
+    }
+
+    @GetMapping("/{id}/wifi")
+    public ApiResponse<StoreAdminService.WifiView> wifi(@PathVariable String id) {
+        Long userId = CurrentMp.optionalFormalUserId();
+        if (userId == null) {
+            throw BizException.unauthorized();
+        }
+        return ApiResponse.ok(storeAdminService.wifi(userId, parseId(id)));
     }
 
     private static long parseId(String id) {

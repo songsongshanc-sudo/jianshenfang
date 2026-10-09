@@ -9,4 +9,4 @@ code/server/data/
 .DS_Store
 .env
 .env.*
-!*.env.example
+!**/.env.local

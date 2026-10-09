@@ -1,35 +1,61 @@
 <template>
   <view class="page">
-    <swiper v-if="bannerList.length" class="banner" indicator-dots circular>
+    <swiper v-if="bannerList.length" class="banner" indicator-dots indicator-color="rgba(255,255,255,.45)" indicator-active-color="#ffffff" circular autoplay>
       <swiper-item v-for="item in bannerList" :key="item.id">
         <image class="banner-image" :src="item.imageUrl" mode="aspectFill" />
       </swiper-item>
     </swiper>
-    <view v-if="noticeList.length" class="notice">{{ noticeList.map((item) => item.content).join("  ·  ") }}</view>
-
-    <view class="card" @click="goSwitch">
-      <image v-if="store?.coverUrl" class="cover" :src="store.coverUrl" mode="aspectFill" />
-      <view class="card-body">
-        <text class="name">{{ store?.name || "请选择门店" }}</text>
-        <text class="meta">{{ store ? statusText(store.status) : "点这里切换门店" }}</text>
-        <text v-if="distance" class="meta">距离 {{ distance }}</text>
+    <view v-else class="banner banner-fallback">
+      <text class="mark">24</text>
+      <view>
+        <text class="fallback-title">自助健身</text>
+        <text class="fallback-sub">选一家店，开通会员后到店训练</text>
       </view>
     </view>
 
-    <view class="actions">
-      <button @click="goSwitch">切换门店</button>
-      <button @click="goIntro">门店介绍</button>
-      <button @click="goGuide">到店指引</button>
-      <button @click="openContacts">联系客服</button>
+    <view v-if="noticeList.length" class="notice">
+      <image class="notice-icon" src="/static/icon/bell.png" mode="aspectFit" />
+      <text class="notice-text">{{ noticeList.map((item) => item.content).join("    ") }}</text>
     </view>
-    <scroll-view v-if="cardList.length" class="cards" scroll-x>
-      <view
-        v-for="item in cardList"
-        :key="item.id"
-        class="sku"
-        :class="{ gray: !item.purchasable }"
-        @click="openCard(item)"
-      >
+
+    <view class="store" @click="goSwitch">
+      <image v-if="store?.coverUrl" class="cover" :src="store.coverUrl" mode="aspectFill" />
+      <view v-else class="cover cover-empty"><text class="cover-mark">{{ (store?.name || "店").slice(0, 1) }}</text></view>
+      <view class="store-body">
+        <view class="store-row">
+          <text class="name">{{ store?.name || "选择门店" }}</text>
+          <text v-if="store" class="pill" :class="{ off: store.status !== 'OPEN' }">{{ statusText(store.status) }}</text>
+        </view>
+        <text class="meta">{{ store?.address || "查看附近门店" }}</text>
+        <text v-if="distance || store?.onlineText" class="meta">{{ [distance ? `距你 ${distance}` : "", store?.onlineText || ""].filter(Boolean).join("  ·  ") }}</text>
+      </view>
+    </view>
+
+    <view class="quick">
+      <view class="quick-item" @click="goSwitch">
+        <view class="bubble"><image class="ico" src="/static/icon/pin.png" mode="aspectFit" /></view>
+        <text>切换门店</text>
+      </view>
+      <view class="quick-item" @click="goIntro">
+        <view class="bubble"><image class="ico" src="/static/icon/info.png" mode="aspectFit" /></view>
+        <text>门店介绍</text>
+      </view>
+      <view class="quick-item" @click="goGuide">
+        <view class="bubble"><image class="ico" src="/static/icon/route.png" mode="aspectFit" /></view>
+        <text>到店指引</text>
+      </view>
+      <view class="quick-item" @click="openContacts">
+        <view class="bubble"><image class="ico" src="/static/icon/phone.png" mode="aspectFit" /></view>
+        <text>联系客服</text>
+      </view>
+    </view>
+
+    <view class="section">
+      <text class="section-title">会员卡</text>
+      <text class="section-link" @click="buy">全部</text>
+    </view>
+    <scroll-view v-if="cardList.length" class="cards" scroll-x enable-flex>
+      <view v-for="item in cardList" :key="item.id" class="sku" :class="{ gray: !item.purchasable }" @click="openCard(item)">
         <text class="sku-name">{{ item.name }}</text>
         <text class="sku-price">{{ yuan(item.priceFen) }}</text>
         <text v-if="item.displayText" class="sku-meta">{{ item.displayText }}</text>
@@ -37,7 +63,11 @@
         <text v-if="item.lockText" class="sku-lock">{{ item.lockText }}</text>
       </view>
     </scroll-view>
-    <button class="buy" type="primary" @click="buy">开通会员</button>
+    <view v-else class="empty-card">选择门店后，这里显示可购买的会员卡</view>
+
+    <view class="dock">
+      <button class="buy" @click="buy">开通会员</button>
+    </view>
     <contact-sheet :visible="sheet" :contacts="contacts" @close="sheet = false" />
   </view>
 </template>
@@ -170,34 +200,93 @@ onShow(async () => {
 </script>
 
 <style scoped>
-.page { padding: 24rpx; }
-.banner { height: 280rpx; border-radius: 16rpx; overflow: hidden; }
-.banner-image { width: 100%; height: 280rpx; }
-.notice { margin-top: 16rpx; color: #9a3412; background: #fff7ed; padding: 16rpx; border-radius: 12rpx; font-size: 26rpx; }
-.card { margin-top: 20rpx; background: #fff; border-radius: 16rpx; overflow: hidden; }
-.cover { width: 100%; height: 280rpx; }
-.card-body { padding: 20rpx; }
-.name { display: block; font-size: 34rpx; font-weight: 600; }
-.meta { display: block; margin-top: 8rpx; color: #666; font-size: 26rpx; }
-.actions { display: flex; flex-wrap: wrap; gap: 16rpx; margin-top: 20rpx; }
-.actions button { margin: 0; }
-.cards { margin-top: 20rpx; white-space: nowrap; }
+.page { padding: 24rpx 24rpx 180rpx; }
+.banner { height: 320rpx; border-radius: 28rpx; overflow: hidden; }
+.banner-image { width: 100%; height: 320rpx; }
+.banner-fallback {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+  padding: 0 36rpx;
+  background: #1c1917;
+  box-sizing: border-box;
+}
+.mark {
+  width: 88rpx;
+  height: 88rpx;
+  border-radius: 24rpx;
+  background: #c2410c;
+  color: #fff;
+  text-align: center;
+  line-height: 88rpx;
+  font-size: 36rpx;
+  font-weight: 800;
+}
+.fallback-title { display: block; color: #fff; font-size: 40rpx; font-weight: 700; }
+.fallback-sub { display: block; margin-top: 8rpx; color: #d6d3d1; font-size: 24rpx; }
+.notice {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-top: 20rpx;
+  padding: 16rpx 20rpx;
+  border-radius: 16rpx;
+  background: #fff7ed;
+}
+.notice-icon { width: 32rpx; height: 32rpx; flex-shrink: 0; }
+.notice-text { color: #9a3412; font-size: 24rpx; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.store {
+  display: flex;
+  gap: 20rpx;
+  margin-top: 20rpx;
+  padding: 20rpx;
+  background: #fff;
+  border-radius: 28rpx;
+}
+.cover { width: 160rpx; height: 160rpx; border-radius: 20rpx; flex-shrink: 0; }
+.cover-empty { display: flex; align-items: center; justify-content: center; background: #1c1917; }
+.cover-mark { color: #fff; font-size: 48rpx; font-weight: 700; }
+.store-body { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+.store-row { display: flex; align-items: center; gap: 12rpx; }
+.name { font-size: 34rpx; font-weight: 700; }
+.pill { padding: 4rpx 12rpx; border-radius: 999rpx; background: #ecfdf3; color: #15803d; font-size: 20rpx; }
+.pill.off { background: #f5f5f4; color: #78716c; }
+.meta { display: block; margin-top: 8rpx; color: #78716c; font-size: 24rpx; }
+.quick { display: flex; margin-top: 28rpx; }
+.quick-item { width: 25%; display: flex; flex-direction: column; align-items: center; gap: 12rpx; font-size: 24rpx; }
+.bubble { width: 96rpx; height: 96rpx; border-radius: 32rpx; background: #fff; display: flex; align-items: center; justify-content: center; }
+.ico { width: 44rpx; height: 44rpx; }
+.section { display: flex; justify-content: space-between; align-items: baseline; margin: 36rpx 4rpx 16rpx; }
+.section-title { font-size: 32rpx; font-weight: 700; }
+.section-link { color: #c2410c; font-size: 26rpx; }
+.cards { white-space: nowrap; }
 .sku {
   display: inline-flex;
   flex-direction: column;
-  width: 240rpx;
+  width: 280rpx;
+  min-height: 180rpx;
   margin-right: 16rpx;
-  padding: 20rpx;
-  border-radius: 16rpx;
-  background: #fff7ed;
+  padding: 24rpx;
+  border-radius: 24rpx;
+  background: #fff;
   vertical-align: top;
   white-space: normal;
+  box-sizing: border-box;
 }
 .sku.gray { background: #f5f5f4; color: #78716c; }
 .sku-name { font-size: 28rpx; font-weight: 600; }
-.sku-price { margin-top: 8rpx; font-size: 32rpx; color: #c2410c; }
+.sku-price { margin-top: 16rpx; font-size: 40rpx; font-weight: 700; color: #c2410c; }
 .sku.gray .sku-price { color: #78716c; }
-.sku-meta, .sku-lock, .sku-left { margin-top: 8rpx; font-size: 22rpx; }
+.sku-meta, .sku-lock, .sku-left { margin-top: 8rpx; font-size: 22rpx; color: #78716c; }
 .sku-left { color: #c2410c; }
-.buy { margin-top: 24rpx; background: #e85d04; }
+.empty-card { padding: 40rpx 24rpx; border-radius: 24rpx; background: #fff; color: #78716c; text-align: center; }
+.dock {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 16rpx 24rpx 24rpx;
+  background: rgba(246, 243, 238, 0.96);
+}
+.buy { margin: 0; background: #c2410c; color: #fff; }
 </style>

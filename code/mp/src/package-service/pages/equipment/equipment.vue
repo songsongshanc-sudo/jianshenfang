@@ -33,7 +33,11 @@ async function lookup() {
 function open(value: string) { code.value = value; lookup(); }
 </script>
 <style scoped>
-.page { padding: 24rpx; } .card { margin-top: 16rpx; padding: 16rpx; background: #fff; }
-.name { font-weight: 600; } .meta { display: block; margin-top: 8rpx; color: #555; }
-input { background: #fff; padding: 12rpx; }
+.page { padding: 24rpx 24rpx 48rpx; }
+.card { margin-top: 16rpx; padding: 24rpx; border-radius: 24rpx; background: #fff; }
+.name { font-weight: 700; }
+.meta { display: block; margin-top: 8rpx; color: #78716c; }
+input { background: #fff; }
+button { margin-top: 16rpx; }
+video { width: 100%; margin-top: 16rpx; border-radius: 16rpx; }
 </style>

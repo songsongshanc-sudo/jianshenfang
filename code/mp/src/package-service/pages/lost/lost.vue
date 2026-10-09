@@ -36,6 +36,11 @@ async function submit(kind: string) {
 }
 </script>
 <style scoped>
-.page { padding: 24rpx; } .tabs { display: flex; gap: 24rpx; } .card { margin-top: 16rpx; padding: 16rpx; background: #fff; }
-.meta { display: block; color: #78716c; } input, textarea { width: 100%; margin-top: 12rpx; background: #fff; }
+.page { padding: 24rpx 24rpx 48rpx; }
+.tabs { display: flex; gap: 12rpx; }
+.tabs text { padding: 12rpx 20rpx; border-radius: 999rpx; background: #fff; font-size: 24rpx; }
+.card { margin-top: 16rpx; padding: 24rpx; border-radius: 24rpx; background: #fff; }
+.meta { display: block; margin-top: 8rpx; color: #78716c; }
+input, textarea { width: 100%; margin-top: 16rpx; background: #fff; }
+button { margin-top: 16rpx; }
 </style>

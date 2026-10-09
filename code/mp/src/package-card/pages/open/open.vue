@@ -62,16 +62,16 @@ function openCard(item: CardItem) {
 </script>
 
 <style scoped>
-.page { padding: 24rpx; }
+.page { padding: 24rpx 24rpx 48rpx; }
 .title { display: block; font-size: 40rpx; font-weight: 700; }
 .sub { display: block; margin: 8rpx 0 20rpx; color: #78716c; font-size: 26rpx; }
-.empty { color: #78716c; font-size: 28rpx; }
-.sku { margin-bottom: 16rpx; padding: 24rpx; border-radius: 16rpx; background: #fff; }
+.empty { padding: 48rpx 24rpx; border-radius: 24rpx; background: #fff; color: #78716c; text-align: center; }
+.sku { margin-bottom: 16rpx; padding: 28rpx; border-radius: 24rpx; background: #fff; }
 .sku.gray { background: #f5f5f4; color: #78716c; }
 .row { display: flex; justify-content: space-between; align-items: center; }
-.name { font-size: 32rpx; font-weight: 600; }
-.price { font-size: 34rpx; color: #c2410c; }
+.name { font-size: 32rpx; font-weight: 700; }
+.price { font-size: 36rpx; font-weight: 700; color: #c2410c; }
 .sku.gray .price { color: #78716c; }
-.meta, .lock, .left { display: block; margin-top: 8rpx; font-size: 24rpx; }
+.meta, .lock, .left { display: block; margin-top: 8rpx; color: #78716c; font-size: 24rpx; }
 .left { color: #c2410c; }
 </style>

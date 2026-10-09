@@ -109,12 +109,12 @@ onShow(async () => {
 </script>
 
 <style scoped>
-.page { padding: 24rpx; }
+.page { padding: 24rpx 24rpx 48rpx; }
 .filters { display: flex; gap: 12rpx; align-items: center; }
-.input { flex: 1; background: #fff; padding: 12rpx 16rpx; border-radius: 8rpx; }
-.map { width: 100%; height: 420rpx; margin: 16rpx 0; }
-.item { display: flex; justify-content: space-between; align-items: center; background: #fff; padding: 20rpx; border-radius: 12rpx; margin-bottom: 12rpx; }
-.name { display: block; font-size: 30rpx; font-weight: 600; }
-.meta { display: block; margin-top: 6rpx; color: #666; font-size: 24rpx; }
+.input { flex: 1; background: #fff; }
+.map { width: 100%; height: 420rpx; margin: 16rpx 0; border-radius: 24rpx; overflow: hidden; }
+.item { display: flex; justify-content: space-between; align-items: center; gap: 16rpx; background: #fff; padding: 24rpx; border-radius: 24rpx; margin-bottom: 16rpx; }
+.name { display: block; font-size: 30rpx; font-weight: 700; }
+.meta { display: block; margin-top: 6rpx; color: #78716c; font-size: 24rpx; }
 .empty { color: #888; text-align: center; margin-top: 40rpx; }
 </style>

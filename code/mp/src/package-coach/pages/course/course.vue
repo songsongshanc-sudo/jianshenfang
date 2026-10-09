@@ -43,6 +43,9 @@ async function buy() {
 }
 </script>
 <style scoped>
-.page { padding: 24rpx; } .title { font-size: 36rpx; font-weight: 600; } .meta, .block { display: block; margin-top: 12rpx; }
-.block { font-weight: 600; }
+.page { padding: 24rpx 24rpx 48rpx; }
+.title { display: block; font-size: 40rpx; font-weight: 700; }
+.meta, .block { display: block; margin-top: 12rpx; line-height: 1.6; }
+.block { margin-top: 28rpx; font-weight: 700; }
+button { margin-top: 32rpx; }
 </style>

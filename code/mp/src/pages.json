@@ -66,38 +66,39 @@
   ],
   "globalStyle": {
     "navigationBarTextStyle": "black",
-    "navigationBarTitleText": "健身房",
-    "navigationBarBackgroundColor": "#F8F8F8",
-    "backgroundColor": "#F8F8F8"
+    "navigationBarTitleText": "自助健身",
+    "navigationBarBackgroundColor": "#F6F3EE",
+    "backgroundColor": "#F6F3EE"
   },
   "tabBar": {
-    "color": "#666666",
-    "selectedColor": "#e85d04",
-    "backgroundColor": "#ffffff",
+    "color": "#A8A29E",
+    "selectedColor": "#C2410C",
+    "backgroundColor": "#FFFFFF",
+    "borderStyle": "white",
     "list": [
       {
         "pagePath": "pages/home/home",
         "text": "首页",
         "iconPath": "static/tab/home.png",
-        "selectedIconPath": "static/tab/home.png"
+        "selectedIconPath": "static/tab/home-on.png"
       },
       {
         "pagePath": "pages/coach/coach",
         "text": "预约教练",
         "iconPath": "static/tab/coach.png",
-        "selectedIconPath": "static/tab/coach.png"
+        "selectedIconPath": "static/tab/coach-on.png"
       },
       {
         "pagePath": "pages/join/join",
         "text": "我要开店",
         "iconPath": "static/tab/join.png",
-        "selectedIconPath": "static/tab/join.png"
+        "selectedIconPath": "static/tab/join-on.png"
       },
       {
         "pagePath": "pages/mine/mine",
         "text": "我的",
         "iconPath": "static/tab/mine.png",
-        "selectedIconPath": "static/tab/mine.png"
+        "selectedIconPath": "static/tab/mine-on.png"
       }
     ]
   }

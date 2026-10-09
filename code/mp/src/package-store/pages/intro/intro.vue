@@ -7,11 +7,11 @@
       <text class="meta">{{ store.province }} {{ store.city }} {{ store.address }}</text>
       <text class="meta">{{ store.status === "OPEN" ? "营业中" : "暂停营业" }} · {{ store.businessHours }}</text>
       <text class="meta">在线人数：{{ store.onlineText }}</text>
-      <view class="actions">
-        <button @click="goGuide">到店指引</button>
-        <button @click="goWifi">WiFi</button>
-        <button @click="openContacts">联系客服</button>
-        <button @click="navigate">导航</button>
+      <view class="quick">
+        <view class="quick-item" @click="goGuide"><view class="bubble"><image class="ico" src="/static/icon/route.png" mode="aspectFit" /></view><text>到店指引</text></view>
+        <view class="quick-item" @click="goWifi"><view class="bubble"><image class="ico" src="/static/icon/wifi.png" mode="aspectFit" /></view><text>WiFi</text></view>
+        <view class="quick-item" @click="openContacts"><view class="bubble"><image class="ico" src="/static/icon/phone.png" mode="aspectFit" /></view><text>客服</text></view>
+        <view class="quick-item" @click="navigate"><view class="bubble"><image class="ico" src="/static/icon/pin.png" mode="aspectFit" /></view><text>导航</text></view>
       </view>
     </template>
     <contact-sheet :visible="sheet" :contacts="contacts" @close="sheet = false" />
@@ -63,11 +63,13 @@ onLoad(async (query) => {
 </script>
 
 <style scoped>
-.page { padding: 24rpx; }
-.cover { width: 100%; height: 320rpx; border-radius: 16rpx; }
-.name { display: block; margin-top: 20rpx; font-size: 36rpx; font-weight: 600; }
-.meta { display: block; margin-top: 10rpx; color: #555; font-size: 28rpx; }
-.actions { display: flex; gap: 16rpx; margin-top: 24rpx; }
-.actions button { margin: 0; }
+.page { padding: 24rpx 24rpx 48rpx; }
+.cover { width: 100%; height: 360rpx; border-radius: 28rpx; }
+.name { display: block; margin-top: 24rpx; font-size: 40rpx; font-weight: 700; }
+.meta { display: block; margin-top: 10rpx; color: #57534e; font-size: 26rpx; line-height: 1.5; }
+.quick { display: flex; margin-top: 32rpx; }
+.quick-item { width: 25%; display: flex; flex-direction: column; align-items: center; gap: 12rpx; font-size: 24rpx; }
+.bubble { width: 96rpx; height: 96rpx; border-radius: 32rpx; background: #fff; display: flex; align-items: center; justify-content: center; }
+.ico { width: 44rpx; height: 44rpx; }
 .empty { color: #888; text-align: center; margin-top: 80rpx; }
 </style>

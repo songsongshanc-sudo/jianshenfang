@@ -23,6 +23,9 @@ async function show(packId: string) { token.value = (await lessonQr(packId)).tok
 async function redeem() { await redeemLesson(scan.value); rows.value = await myLessons(); }
 </script>
 <style scoped>
-.page { padding: 24rpx; } .card { margin-top: 16rpx; padding: 16rpx; background: #fff; } .meta, .empty { display: block; margin-top: 8rpx; color: #78716c; }
-input { margin-top: 16rpx; background: #fff; padding: 12rpx; }
+.page { padding: 24rpx 24rpx 48rpx; }
+.card { margin-top: 16rpx; padding: 24rpx; border-radius: 24rpx; background: #fff; }
+.meta, .empty { display: block; margin-top: 8rpx; color: #78716c; }
+input { margin-top: 20rpx; background: #fff; }
+button { margin-top: 16rpx; }
 </style>

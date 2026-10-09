@@ -25,6 +25,6 @@ onShow(async () => {
 <style scoped>
 .page { padding: 24rpx; }
 .title { display: block; font-size: 40rpx; font-weight: 700; }
-.content { display: block; margin-top: 20rpx; font-size: 28rpx; line-height: 1.6; white-space: pre-wrap; }
+.content { display: block; margin-top: 20rpx; padding: 28rpx; border-radius: 24rpx; background: #fff; font-size: 28rpx; line-height: 1.7; white-space: pre-wrap; }
 .empty { display: block; margin-top: 20rpx; color: #78716c; }
 </style>

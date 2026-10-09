@@ -13,6 +13,9 @@ const rows = ref<unknown[]>([]);
 async function load(platform: string) { rows.value = await reviews(platform); }
 </script>
 <style scoped>
-.page { padding: 24rpx; } .title { font-size: 36rpx; font-weight: 600; } .hint, .empty { display: block; margin-top: 16rpx; color: #78716c; }
-.tabs { display: flex; gap: 24rpx; margin-top: 24rpx; }
+.page { padding: 24rpx 24rpx 48rpx; }
+.title { font-size: 40rpx; font-weight: 700; }
+.hint, .empty { display: block; margin-top: 16rpx; color: #78716c; line-height: 1.6; }
+.tabs { display: flex; gap: 12rpx; margin-top: 24rpx; }
+.tabs text { padding: 12rpx 24rpx; border-radius: 999rpx; background: #fff; }
 </style>

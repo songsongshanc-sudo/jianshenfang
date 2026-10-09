@@ -36,8 +36,8 @@ onLoad(async (query) => {
 
 <style scoped>
 .page { padding: 24rpx; }
-.step { background: #fff; border-radius: 16rpx; padding: 20rpx; margin-bottom: 16rpx; }
-.order { font-weight: 600; }
+.step { background: #fff; border-radius: 24rpx; padding: 24rpx; margin-bottom: 16rpx; }
+.order { display: inline-block; min-width: 40rpx; height: 40rpx; padding: 0 12rpx; border-radius: 999rpx; background: #1c1917; color: #fff; text-align: center; line-height: 40rpx; font-size: 22rpx; }
 .image { width: 100%; margin-top: 12rpx; border-radius: 12rpx; }
 .caption { display: block; margin-top: 12rpx; font-size: 28rpx; }
 .empty { color: #888; text-align: center; margin-top: 80rpx; }

@@ -116,12 +116,12 @@ async function pay() {
 </script>
 
 <style scoped>
-.page { padding: 24rpx; }
-.title { display: block; font-size: 40rpx; font-weight: 700; }
-.line { display: block; margin-top: 12rpx; font-size: 28rpx; }
-.warn { display: block; margin: 24rpx 0; color: #b91c1c; font-size: 28rpx; }
+.page { padding: 24rpx 24rpx 48rpx; }
+.title { display: block; padding: 28rpx; border-radius: 28rpx; background: #1c1917; color: #fff; font-size: 40rpx; font-weight: 700; }
+.line { display: block; margin-top: 16rpx; padding: 0 8rpx; font-size: 28rpx; }
+.warn { display: block; margin: 24rpx 0; padding: 20rpx 24rpx; border-radius: 20rpx; background: #fff7ed; color: #9a3412; font-size: 26rpx; line-height: 1.6; }
 .agree { display: flex; align-items: center; margin-bottom: 24rpx; font-size: 26rpx; }
-.box { margin-right: 8rpx; }
+.box { margin-right: 8rpx; color: #c2410c; }
 .link { color: #c2410c; }
-.done { margin-top: 24rpx; font-size: 32rpx; font-weight: 700; }
+.done { margin-top: 24rpx; padding: 28rpx; border-radius: 24rpx; background: #fff; font-size: 32rpx; font-weight: 700; text-align: center; }
 </style>

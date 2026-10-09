@@ -37,7 +37,7 @@ onShow(async () => {
 .page { padding: 24rpx; }
 .title { display: block; font-size: 40rpx; font-weight: 700; }
 .empty { margin-top: 24rpx; color: #78716c; }
-.row { margin-top: 16rpx; padding: 24rpx; border-radius: 16rpx; background: #fff; }
+.row { margin-top: 16rpx; padding: 28rpx; border-radius: 24rpx; background: #fff; }
 .name { display: block; font-size: 32rpx; font-weight: 600; }
 .meta { display: block; margin-top: 8rpx; color: #57534e; font-size: 26rpx; }
 </style>

@@ -17,7 +17,7 @@
         <button size="mini" @click="call(phone)">拨打</button>
       </view>
       <text v-if="empty" class="hint">这家店还没有配置电话</text>
-      <button class="close" @click="close">关闭</button>
+      <view class="cancel" @click="close">关闭</view>
     </view>
   </view>
 </template>
@@ -59,13 +59,14 @@ function call(phone: string) {
 .sheet {
   width: 100%;
   background: #fff;
-  border-radius: 24rpx 24rpx 0 0;
-  padding: 32rpx;
+  border-radius: 28rpx 28rpx 0 0;
+  padding: 32rpx 32rpx 48rpx;
+  box-sizing: border-box;
 }
 .title {
   display: block;
-  font-size: 32rpx;
-  font-weight: 600;
+  font-size: 34rpx;
+  font-weight: 700;
 }
 .hint,
 .line {
@@ -78,7 +79,10 @@ function call(phone: string) {
   justify-content: space-between;
   align-items: center;
 }
-.close {
-  margin-top: 24rpx;
+.cancel {
+  margin-top: 28rpx;
+  padding: 20rpx;
+  text-align: center;
+  color: #78716c;
 }
 </style>

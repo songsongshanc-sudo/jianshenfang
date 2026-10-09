@@ -5,5 +5,7 @@
   </view>
 </template>
 <style scoped>
-.page { padding: 24rpx; } .title { font-size: 36rpx; font-weight: 600; } .text { display: block; margin-top: 16rpx; color: #444; line-height: 1.6; }
+.page { padding: 24rpx 24rpx 48rpx; }
+.title { display: block; font-size: 40rpx; font-weight: 700; }
+.text { display: block; margin-top: 16rpx; padding: 28rpx; border-radius: 24rpx; background: #fff; color: #44403c; line-height: 1.7; }
 </style>

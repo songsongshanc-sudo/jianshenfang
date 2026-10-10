@@ -112,6 +112,41 @@ public class GateService {
         }
     }
 
+    public void updateDevice(AdminPrincipal actor, long id, long storeId, String name, String deviceSn) {
+        StoreScope.requireMaster(actor);
+        mustStore(storeId);
+        if (name == null || name.isBlank()) {
+            throw BizException.badRequest("名称不能为空");
+        }
+        String sn = deviceSn == null ? "" : deviceSn.trim();
+        if (sn.isEmpty() || sn.length() > 64) {
+            throw BizException.badRequest("设备号不正确");
+        }
+        GateDevice device = mustDevice(id);
+        Long taken = gateDeviceMapper.selectCount(new LambdaQueryWrapper<GateDevice>()
+                .eq(GateDevice::getDeviceSn, sn)
+                .ne(GateDevice::getId, id));
+        if (taken != null && taken > 0) {
+            throw BizException.badRequest("设备号已存在");
+        }
+        boolean storeChanged = !Long.valueOf(storeId).equals(device.getStoreId());
+        boolean snChanged = !sn.equals(device.getDeviceSn());
+        device.setStoreId(storeId);
+        device.setName(name.trim());
+        device.setDeviceSn(sn);
+        gateDeviceMapper.updateById(device);
+        if (storeChanged || snChanged) {
+            gateFaceSync.onDeviceReady(device.getId());
+        }
+    }
+
+    public void deleteDevice(AdminPrincipal actor, long id) {
+        StoreScope.requireMaster(actor);
+        GateDevice device = mustDevice(id);
+        taskMapper.delete(new LambdaQueryWrapper<GateSyncTask>().eq(GateSyncTask::getDeviceId, device.getId()));
+        gateDeviceMapper.deleteById(device.getId());
+    }
+
     public List<DeviceView> devices(AdminPrincipal actor, Long storeId) {
         Long scoped = StoreScope.requiredStore(actor, storeId);
         LambdaQueryWrapper<GateDevice> query = new LambdaQueryWrapper<GateDevice>().orderByAsc(GateDevice::getId);
@@ -270,6 +305,23 @@ public class GateService {
         }
         log(user.getId(), device, pass.getId(), "SUCCESS", now);
         return new VerifyResult(true, "开门");
+    }
+
+    public List<VisitView> myVisits(long userId) {
+        return doorLogMapper.selectList(new LambdaQueryWrapper<DoorLog>()
+                        .eq(DoorLog::getUserId, userId)
+                        .orderByDesc(DoorLog::getCreatedAt)
+                        .last("LIMIT 50"))
+                .stream()
+                .map(row -> {
+                    Store store = row.getStoreId() == null ? null : storeMapper.selectById(row.getStoreId());
+                    return new VisitView(
+                            String.valueOf(row.getId()),
+                            store == null ? "" : store.getName(),
+                            "SUCCESS".equals(row.getResult()) ? "进店成功" : "未通过",
+                            row.getCreatedAt());
+                })
+                .toList();
     }
 
     public List<DoorView> doors(AdminPrincipal actor, Long storeId) {
@@ -504,6 +556,9 @@ public class GateService {
 
     public record DoorView(String id, String storeId, String deviceSn, String userId, String memberNo, String face,
                            String result, LocalDateTime createdAt) {
+    }
+
+    public record VisitView(String id, String storeName, String result, LocalDateTime createdAt) {
     }
 
     public record VerifyResult(boolean open, String reason) {

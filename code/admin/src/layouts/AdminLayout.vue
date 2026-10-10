@@ -25,6 +25,8 @@
         <el-menu-item v-if="session.role === 'MASTER'" index="/agreements">会员协议</el-menu-item>
         <el-menu-item v-if="session.role === 'MASTER'" index="/configs">系统配置</el-menu-item>
         <el-menu-item index="/cards">卡种</el-menu-item>
+        <el-menu-item index="/coaches">教练与课程</el-menu-item>
+        <el-menu-item index="/groupon">团购</el-menu-item>
         <el-menu-item index="/orders">订单</el-menu-item>
         <el-menu-item index="/gates">闸机</el-menu-item>
         <el-menu-item index="/doors">进店记录</el-menu-item>
@@ -32,8 +34,6 @@
         <el-menu-item index="/complaints">投诉</el-menu-item>
         <el-menu-item index="/lost">失物</el-menu-item>
         <el-menu-item v-if="session.role === 'MASTER'" index="/equipment">器械</el-menu-item>
-        <el-menu-item v-if="session.role === 'MASTER'" index="/groupon">团购</el-menu-item>
-        <el-menu-item v-if="session.role === 'MASTER'" index="/coaches">教练</el-menu-item>
         <el-menu-item v-if="session.role === 'MASTER'" index="/franchise">加盟</el-menu-item>
         <el-menu-item v-if="session.role === 'MASTER'" index="/messages">消息</el-menu-item>
         <el-menu-item v-if="session.role === 'MASTER'" index="/violations">违规</el-menu-item>
@@ -78,6 +78,8 @@ const titles: Record<string, string> = {
   "/agreements": "会员协议",
   "/configs": "系统配置",
   "/cards": "卡种",
+  "/coaches": "教练与课程",
+  "/groupon": "团购",
   "/orders": "订单",
   "/gates": "闸机",
   "/doors": "进店记录",
@@ -85,8 +87,6 @@ const titles: Record<string, string> = {
   "/complaints": "投诉",
   "/lost": "失物",
   "/equipment": "器械",
-  "/groupon": "团购",
-  "/coaches": "教练",
   "/franchise": "加盟",
   "/messages": "消息",
   "/violations": "违规"

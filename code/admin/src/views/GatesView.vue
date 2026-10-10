@@ -1,7 +1,10 @@
 <template>
   <div>
     <h1>闸机</h1>
-    <p class="lead">总账号登记闸机，设备号填机身上的编号。闸机长连接地址是 /ws/gate。人脸在购卡后下发到本店闸机，离线会自动补发。模拟验码仍用旧密钥，方便没有闸机时验收开门规则。</p>
+    <p class="lead">
+      总账号在管理端登记设备号（机身编号）。闸机屏幕上只配服务器域名：HTTPS 验脸和
+      <code>wss://同一域名/ws/gate</code> 长连接用的是同一台后端。人脸在购卡后下发到本店闸机，离线会自动补发。模拟验码仍用旧密钥，方便没有闸机时验收开门规则。
+    </p>
     <el-form v-if="session.role === 'MASTER'" :inline="true" @submit.prevent="create">
       <el-form-item label="门店">
         <el-select v-model="form.storeId" style="width: 180px">
@@ -27,15 +30,34 @@
         <template #default="{ row }">{{ row.signed ? "已启用" : "未启用" }}</template>
       </el-table-column>
       <el-table-column v-if="session.role === 'MASTER'" prop="secret" label="模拟密钥" />
-      <el-table-column label="操作" width="240">
+      <el-table-column label="操作" width="320">
         <template #default="{ row }">
+          <el-button v-if="session.role === 'MASTER'" link @click="openEdit(row)">编辑</el-button>
           <el-button link @click="retry(row.id)">重试失败</el-button>
           <el-button v-if="session.role === 'MASTER'" link @click="reset(row.id)">重置密钥</el-button>
           <el-button v-if="session.role === 'MASTER'" link @click="token(row.id)">启用签名</el-button>
           <el-button v-if="session.role === 'MASTER'" link @click="toggle(row)">{{ row.status === "ENABLED" ? "停用" : "启用" }}</el-button>
+          <el-button v-if="session.role === 'MASTER'" link type="danger" @click="remove(row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
+
+    <el-dialog v-model="editVisible" title="编辑闸机" width="420px" destroy-on-close>
+      <el-form label-width="72px">
+        <el-form-item label="门店">
+          <el-select v-model="edit.storeId" style="width: 100%">
+            <el-option v-for="store in stores" :key="store.id" :label="store.name" :value="store.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="名称"><el-input v-model="edit.name" /></el-form-item>
+        <el-form-item label="设备号"><el-input v-model="edit.deviceSn" /></el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editVisible = false">取消</el-button>
+        <el-button type="primary" @click="saveEdit">保存</el-button>
+      </template>
+    </el-dialog>
+
     <h2 v-if="session.role === 'MASTER'">模拟验码</h2>
     <el-form v-if="session.role === 'MASTER'" :inline="true" @submit.prevent="simulate">
       <el-form-item label="设备">
@@ -52,7 +74,7 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from "vue";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import { http, type ApiBody } from "../api/http";
 import { useSessionStore } from "../stores/session";
 
@@ -76,6 +98,8 @@ const session = useSessionStore();
 const stores = ref<{ id: string; name: string }[]>([]);
 const rows = ref<Device[]>([]);
 const form = reactive({ storeId: "", name: "", deviceSn: "" });
+const edit = reactive({ id: "", storeId: "", name: "", deviceSn: "" });
+const editVisible = ref(false);
 const sim = reactive({ sn: "", memberNo: "" });
 const simResult = ref("");
 
@@ -99,6 +123,38 @@ async function create() {
   form.name = "";
   form.deviceSn = "";
   ElMessage.success("已登记");
+  await load();
+}
+
+function openEdit(row: Device) {
+  edit.id = row.id;
+  edit.storeId = row.storeId;
+  edit.name = row.name;
+  edit.deviceSn = row.deviceSn;
+  editVisible.value = true;
+}
+
+async function saveEdit() {
+  if (!edit.deviceSn.trim() || !edit.name.trim()) {
+    ElMessage.warning("请填写名称和设备号");
+    return;
+  }
+  await http.put(`/api/admin/gates/${edit.id}`, {
+    storeId: edit.storeId,
+    name: edit.name,
+    deviceSn: edit.deviceSn,
+  });
+  editVisible.value = false;
+  ElMessage.success("已保存");
+  await load();
+}
+
+async function remove(row: Device) {
+  await ElMessageBox.confirm(`确定删除闸机「${row.name}」？进店记录会保留，同步任务会清除。`, "删除闸机", {
+    type: "warning",
+  });
+  await http.delete(`/api/admin/gates/${row.id}`);
+  ElMessage.success("已删除");
   await load();
 }
 

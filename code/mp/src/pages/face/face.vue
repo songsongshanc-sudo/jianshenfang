@@ -1,7 +1,7 @@
 <template>
   <view class="page">
-    <text class="title">拍摄正脸</text>
-    <text class="text">请正对镜头。不能从相册选择。入库成功后才会得到会员编号。</text>
+    <text class="title">{{ replacing ? "更换正脸" : "拍摄正脸" }}</text>
+    <text class="text">{{ replacing ? "请正对镜头重新拍摄。不能从相册选择。通过后会同步到门店闸机。" : "请正对镜头。不能从相册选择。入库成功后才会得到会员编号。" }}</text>
     <button class="primary" @click="shoot">打开相机</button>
     <button v-if="localTest" class="ghost" @click="submitDemo">本机测试照片</button>
     <text v-if="reason" class="reason">{{ reason }}</text>
@@ -15,6 +15,7 @@ import { request } from "../../api/http";
 
 const reason = ref("");
 const localTest = ref(false);
+const replacing = ref(false);
 
 function allowLocal() {
   try {
@@ -44,6 +45,16 @@ async function upload(objectKey: string, body: ArrayBuffer) {
 
 async function finish(objectKey: string) {
   try {
+    if (replacing.value) {
+      await request<void>({
+        url: "/api/mp/face/replace",
+        method: "POST",
+        data: { objectKey },
+      });
+      uni.showToast({ title: "人脸已更新", icon: "none" });
+      setTimeout(() => uni.navigateBack(), 600);
+      return;
+    }
     const data = await request<{ accessToken: string; memberNo: string }>({
       url: "/api/mp/face",
       method: "POST",
@@ -87,9 +98,17 @@ async function submitDemo() {
   await finish(objectKey);
 }
 
-onLoad(() => {
+onLoad((query) => {
   localTest.value = allowLocal();
-  if (uni.getStorageSync("mpTokenType") !== "FACE") {
+  replacing.value = String(query?.mode || "") === "replace";
+  const tokenType = uni.getStorageSync("mpTokenType");
+  if (replacing.value) {
+    if (tokenType !== "ACCESS") {
+      uni.redirectTo({ url: "/pages/login/login" });
+    }
+    return;
+  }
+  if (tokenType !== "FACE") {
     uni.redirectTo({ url: "/pages/login/login" });
   }
 });

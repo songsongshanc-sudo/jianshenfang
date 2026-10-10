@@ -36,7 +36,7 @@ onLoad(async (query) => {
 
 <style scoped>
 .page { padding: 24rpx; }
-.step { background: #fff; border-radius: 24rpx; padding: 24rpx; margin-bottom: 16rpx; }
+.step { background: #fff; border-radius: 24rpx; padding: 24rpx; margin-bottom: 16rpx; box-shadow: 0 8rpx 28rpx rgba(28, 25, 23, 0.06); }
 .order { display: inline-block; min-width: 40rpx; height: 40rpx; padding: 0 12rpx; border-radius: 999rpx; background: #1c1917; color: #fff; text-align: center; line-height: 40rpx; font-size: 22rpx; }
 .image { width: 100%; margin-top: 12rpx; border-radius: 12rpx; }
 .caption { display: block; margin-top: 12rpx; font-size: 28rpx; }

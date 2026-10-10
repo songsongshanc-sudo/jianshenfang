@@ -206,6 +206,18 @@ public class MpAuthService {
         return formal(user);
     }
 
+    public MeView updateProfile(String nickname) {
+        GymUser user = mustUser(CurrentMp.formal().userId());
+        String value = nickname == null ? "" : nickname.trim();
+        if (value.length() > 32) {
+            throw BizException.badRequest("昵称过长");
+        }
+        user.setNickname(value.isEmpty() ? null : value);
+        user.setUpdatedAt(LocalDateTime.now());
+        userMapper.updateById(user);
+        return me(null);
+    }
+
     public MeView me(Long storeId) {
         GymUser user = mustUser(CurrentMp.formal().userId());
         LocalDate today = timeProvider.today();

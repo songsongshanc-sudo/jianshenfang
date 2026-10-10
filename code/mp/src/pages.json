@@ -6,7 +6,11 @@
     },
     {
       "path": "pages/coach/coach",
-      "style": { "navigationBarTitleText": "预约教练" }
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "预约教练",
+        "navigationBarTextStyle": "white"
+      }
     },
     {
       "path": "pages/join/join",
@@ -23,6 +27,18 @@
     {
       "path": "pages/face/face",
       "style": { "navigationBarTitleText": "人脸采集" }
+    },
+    {
+      "path": "pages/profile/profile",
+      "style": { "navigationBarTitleText": "完善信息" }
+    },
+    {
+      "path": "pages/webview/webview",
+      "style": { "navigationBarTitleText": "详情" }
+    },
+    {
+      "path": "pages/notice/notice",
+      "style": { "navigationBarTitleText": "公告详情" }
     }
   ],
   "subPackages": [
@@ -32,7 +48,8 @@
         { "path": "pages/switch/switch", "style": { "navigationBarTitleText": "门店切换" } },
         { "path": "pages/intro/intro", "style": { "navigationBarTitleText": "门店介绍" } },
         { "path": "pages/guide/guide", "style": { "navigationBarTitleText": "门店指引" } },
-        { "path": "pages/wifi/wifi", "style": { "navigationBarTitleText": "门店WIFI" } }
+        { "path": "pages/wifi/wifi", "style": { "navigationBarTitleText": "门店WIFI" } },
+        { "path": "pages/visits/visits", "style": { "navigationBarTitleText": "健身记录" } }
       ]
     },
     {
@@ -58,8 +75,22 @@
     {
       "root": "package-coach",
       "pages": [
-        { "path": "pages/detail/detail", "style": { "navigationBarTitleText": "教练详情" } },
-        { "path": "pages/course/course", "style": { "navigationBarTitleText": "课程详情" } },
+        {
+          "path": "pages/detail/detail",
+          "style": {
+            "navigationStyle": "custom",
+            "navigationBarTitleText": "教练详情",
+            "navigationBarTextStyle": "white"
+          }
+        },
+        {
+          "path": "pages/course/course",
+          "style": {
+            "navigationStyle": "custom",
+            "navigationBarTitleText": "课程详情",
+            "navigationBarTextStyle": "white"
+          }
+        },
         { "path": "pages/lessons/lessons", "style": { "navigationBarTitleText": "我的课程" } }
       ]
     }
@@ -67,14 +98,14 @@
   "globalStyle": {
     "navigationBarTextStyle": "black",
     "navigationBarTitleText": "自助健身",
-    "navigationBarBackgroundColor": "#F6F3EE",
-    "backgroundColor": "#F6F3EE"
+    "navigationBarBackgroundColor": "#FFFFFF",
+    "backgroundColor": "#F5F6F8"
   },
   "tabBar": {
-    "color": "#A8A29E",
-    "selectedColor": "#C2410C",
+    "color": "#8A8F98",
+    "selectedColor": "#EA580C",
     "backgroundColor": "#FFFFFF",
-    "borderStyle": "white",
+    "borderStyle": "black",
     "list": [
       {
         "pagePath": "pages/home/home",

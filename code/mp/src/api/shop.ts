@@ -54,13 +54,65 @@ export function studentStatus() {
   return request<{ status: string }>({ url: "/api/mp/student", method: "GET" });
 }
 
+export interface CoachListItem {
+  id: string;
+  name: string;
+  intro: string;
+  phone?: string;
+  avatar_url?: string | null;
+  photo_url?: string | null;
+  specialty?: string | null;
+  rating?: number | null;
+  lesson_taught?: number | null;
+  certificate_urls?: string | null;
+  min_price_fen?: number | null;
+  pack_count?: number | null;
+  store_cover_url?: string | null;
+  store_name?: string | null;
+}
+
+export interface CoursePack {
+  id: string;
+  coach_id: string;
+  store_id: string;
+  name: string;
+  price_fen: number;
+  lesson_count: number;
+  content: string | null;
+  audience: string | null;
+  cover_url?: string | null;
+  minutes_per_lesson?: number | null;
+  status?: string;
+  coach_name?: string;
+  coach_photo_url?: string | null;
+  coach_avatar_url?: string | null;
+}
+
+export interface CoachDetail extends CoachListItem {
+  store_id: string;
+  packs: CoursePack[];
+}
+
 export function coaches(storeId: string) {
-  return request<Array<{ id: string; name: string; intro: string }>>({ url: `/api/mp/coaches?storeId=${storeId}`, method: "GET" });
+  return request<CoachListItem[]>({ url: `/api/mp/coaches?storeId=${storeId}`, method: "GET" });
+}
+
+export function coachDetail(id: string) {
+  return request<CoachDetail>({ url: `/api/mp/coaches/${id}`, method: "GET" });
 }
 
 export function packs(storeId: string) {
-  return request<Array<{ id: string; name: string; price_fen: number; lesson_count: number; content: string; audience: string }>>({
-    url: `/api/mp/packs?storeId=${storeId}`, method: "GET"
+  return request<CoursePack[]>({ url: `/api/mp/packs?storeId=${storeId}`, method: "GET" });
+}
+
+export function packDetail(id: string) {
+  return request<CoursePack>({ url: `/api/mp/packs/${id}`, method: "GET" });
+}
+
+export function coachMe() {
+  return request<{ coach: boolean; id?: string; name?: string; storeId?: string }>({
+    url: "/api/mp/coach/me",
+    method: "GET",
   });
 }
 

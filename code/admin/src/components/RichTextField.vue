@@ -31,13 +31,14 @@
       @input="sync"
       @keyup="rememberBlock"
       @mouseup="rememberBlock"
+      @blur="saveSelection"
     />
   </div>
 </template>
 
 <script setup lang="ts">
 import { onMounted, ref, watch } from "vue";
-import { ElMessageBox } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import { http, type ApiBody } from "../api/http";
 
 const props = withDefaults(defineProps<{ modelValue?: string; biz?: string; placeholder?: string }>(), {
@@ -47,6 +48,7 @@ const emit = defineEmits<{ "update:modelValue": [value: string] }>();
 const editor = ref<HTMLDivElement>();
 const block = ref("p");
 const color = ref("#1c1917");
+let savedRange: Range | null = null;
 
 watch(() => props.modelValue, (value) => {
   const next = value || "";
@@ -65,10 +67,38 @@ function sync() {
   emit("update:modelValue", editor.value?.innerHTML || "");
 }
 
-function exec(command: string, value?: string) {
+function saveSelection() {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0 || !editor.value) {
+    return;
+  }
+  const range = selection.getRangeAt(0);
+  if (editor.value.contains(range.commonAncestorContainer)) {
+    savedRange = range.cloneRange();
+  }
+}
+
+function restoreSelection() {
   editor.value?.focus();
+  const selection = window.getSelection();
+  if (!selection) return;
+  selection.removeAllRanges();
+  if (savedRange) {
+    selection.addRange(savedRange);
+    return;
+  }
+  if (!editor.value) return;
+  const range = document.createRange();
+  range.selectNodeContents(editor.value);
+  range.collapse(false);
+  selection.addRange(range);
+}
+
+function exec(command: string, value?: string) {
+  restoreSelection();
   document.execCommand(command, false, value);
   sync();
+  saveSelection();
   rememberBlock();
 }
 
@@ -87,10 +117,11 @@ function rememberBlock() {
   const node = document.getSelection()?.anchorNode?.parentElement;
   const tag = node?.closest("h1,h2,h3,p")?.tagName.toLowerCase();
   block.value = tag === "h1" || tag === "h2" || tag === "h3" ? tag : "p";
+  saveSelection();
 }
 
 async function addLink() {
-  editor.value?.focus();
+  saveSelection();
   try {
     const { value } = await ElMessageBox.prompt("填写链接地址", "插入链接", {
       inputPlaceholder: "https://",
@@ -101,7 +132,7 @@ async function addLink() {
       exec("createLink", value.trim());
     }
   } catch {
-    editor.value?.focus();
+    restoreSelection();
   }
 }
 
@@ -110,12 +141,20 @@ async function onFile(event: Event) {
   const file = input.files?.[0];
   input.value = "";
   if (!file) return;
-  const body = new FormData();
-  body.append("file", file);
-  body.append("biz", props.biz);
-  const response = await http.post<ApiBody<{ url: string }>>("/api/admin/files/images", body);
-  const url = response.data.data.url.replace(/"/g, "");
-  exec("insertHTML", `<img src="${url}" style="max-width:100%;">`);
+  saveSelection();
+  try {
+    const body = new FormData();
+    body.append("file", file);
+    body.append("biz", props.biz);
+    const response = await http.post<ApiBody<{ url: string }>>("/api/admin/files/images", body);
+    const url = response.data.data.url.replace(/"/g, "");
+    restoreSelection();
+    document.execCommand("insertHTML", false, `<img src="${url}" style="max-width:100%;">`);
+    sync();
+    saveSelection();
+  } catch {
+    ElMessage.error("图片上传失败");
+  }
 }
 </script>
 

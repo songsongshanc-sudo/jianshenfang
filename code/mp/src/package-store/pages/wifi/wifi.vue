@@ -38,7 +38,7 @@ function copy() {
 
 <style scoped>
 .page { padding: 24rpx; }
-.card { padding: 32rpx; background: #fff; border-radius: 28rpx; }
+.card { padding: 32rpx; background: #fff; border-radius: 28rpx; box-shadow: 0 8rpx 28rpx rgba(28, 25, 23, 0.06); }
 button { margin-top: 28rpx; }
 .line { display: block; margin-top: 12rpx; }
 .empty { color: #78716c; }

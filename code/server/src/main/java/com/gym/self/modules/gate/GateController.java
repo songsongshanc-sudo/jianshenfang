@@ -8,12 +8,13 @@ import com.gym.self.modules.adminuser.auth.CurrentAdmin;
 import com.gym.self.modules.adminuser.auth.StoreScope;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
-import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -33,6 +34,18 @@ public class GateController {
     @PostMapping("/api/admin/gates")
     public ApiResponse<IdView> create(@Valid @RequestBody CreateDevice request) {
         return ApiResponse.ok(new IdView(gateService.createDevice(CurrentAdmin.get(), parseId(request.storeId()), request.name(), request.deviceSn())));
+    }
+
+    @PutMapping("/api/admin/gates/{id}")
+    public ApiResponse<Void> update(@PathVariable String id, @Valid @RequestBody CreateDevice request) {
+        gateService.updateDevice(CurrentAdmin.get(), parseId(id), parseId(request.storeId()), request.name(), request.deviceSn());
+        return ApiResponse.ok(null);
+    }
+
+    @DeleteMapping("/api/admin/gates/{id}")
+    public ApiResponse<Void> delete(@PathVariable String id) {
+        gateService.deleteDevice(CurrentAdmin.get(), parseId(id));
+        return ApiResponse.ok(null);
     }
 
     @PostMapping("/api/admin/gates/{id}/token")

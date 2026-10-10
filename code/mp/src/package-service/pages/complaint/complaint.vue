@@ -12,15 +12,19 @@
 </template>
 <script setup lang="ts">
 import { ref } from "vue";
-import { onShow } from "@dcloudio/uni-app";
+import { onLoad, onShow } from "@dcloudio/uni-app";
 import { createComplaint, myComplaints } from "../../../api/shop";
 import { useCurrentStore } from "../../../stores/currentStore";
 const current = useCurrentStore();
+const queryStoreId = ref("");
 const labels = ["器械", "卫生", "教练", "其他"];
 const values = ["EQUIPMENT", "CLEAN", "COACH", "OTHER"];
 const index = ref(0);
 const content = ref("");
 const rows = ref<Array<{ id: string; content: string; status: string }>>([]);
+onLoad((query) => {
+  queryStoreId.value = String(query?.storeId || "");
+});
 onShow(async () => { rows.value = await myComplaints(); });
 function statusName(status: string) {
   if (status === "PENDING") return "待处理";
@@ -30,7 +34,7 @@ function statusName(status: string) {
 }
 function onPick(event: { detail: { value: number } }) { index.value = Number(event.detail.value); }
 async function submit() {
-  await createComplaint(current.storeId, values[index.value], content.value);
+  await createComplaint(queryStoreId.value || current.storeId, values[index.value], content.value);
   content.value = "";
   rows.value = await myComplaints();
 }
@@ -39,8 +43,8 @@ async function submit() {
 .page { padding: 24rpx 24rpx 48rpx; }
 .hint { display: block; color: #78716c; font-size: 24rpx; }
 .line { margin-top: 16rpx; padding: 22rpx 24rpx; border-radius: 20rpx; background: #fff; }
-.card { margin-top: 16rpx; padding: 24rpx; border-radius: 24rpx; background: #fff; }
-.meta { display: block; margin-top: 8rpx; color: #c2410c; font-size: 24rpx; }
-textarea { width: 100%; margin-top: 16rpx; min-height: 180rpx; background: #fff; }
+.card { margin-top: 16rpx; padding: 24rpx; border-radius: 20rpx; background: #fff; border: 1px solid #eceff3; }
+.meta { display: block; margin-top: 8rpx; color: #ea580c; font-size: 24rpx; }
+textarea { width: 100%; margin-top: 16rpx; min-height: 200rpx; padding: 20rpx 24rpx; line-height: 44rpx; background: #fff; }
 button { margin-top: 20rpx; }
 </style>

@@ -53,17 +53,17 @@ public class ShopService implements CourseGrant {
     }
 
     public String repair(long userId, long storeId, String equipmentCode, String content, String imageUrl) {
-        contentSafety.check(content);
         requireText(content, "请填写报修说明");
+        contentSafety.check(userId, content);
         return insertTicket("repair_ticket", userId, storeId, blank(equipmentCode), content.trim(), imageUrl);
     }
 
     public String complaint(long userId, long storeId, String category, String content, String imageUrl) {
-        contentSafety.check(content);
         if (!List.of("EQUIPMENT", "CLEAN", "COACH", "OTHER").contains(category)) {
             throw BizException.badRequest("投诉类型不正确");
         }
         requireText(content, "请填写投诉内容");
+        contentSafety.check(userId, content);
         long id = snowflake.next();
         LocalDateTime now = timeProvider.now();
         jdbc.update("""
@@ -74,12 +74,12 @@ public class ShopService implements CourseGrant {
     }
 
     public String lost(long userId, long storeId, String kind, String name, String content, String imageUrl, boolean visible) {
-        contentSafety.check(name + content);
         if (!List.of("LOST", "FOUND").contains(kind)) {
             throw BizException.badRequest("请选择丢失或拾到");
         }
         requireText(name, "请填写名称");
         requireText(content, "请填写说明");
+        contentSafety.check(userId, name + "\n" + content);
         long id = snowflake.next();
         LocalDateTime now = timeProvider.now();
         jdbc.update("""
@@ -210,7 +210,7 @@ public class ShopService implements CourseGrant {
     }
 
     public void addGrouponRule(AdminPrincipal actor, long storeId, String platform, String code, long cardProductId) {
-        StoreScope.requireMaster(actor);
+        StoreScope.requireStoreAccess(actor, storeId);
         if (!List.of("MEITUAN", "DOUYIN").contains(platform)) {
             throw BizException.badRequest("平台不正确");
         }
@@ -230,7 +230,7 @@ public class ShopService implements CourseGrant {
     }
 
     public void updateGrouponRule(AdminPrincipal actor, long id, long storeId, String platform, long cardProductId) {
-        StoreScope.requireMaster(actor);
+        StoreScope.requireStoreAccess(actor, storeId);
         if (!List.of("MEITUAN", "DOUYIN").contains(platform)) {
             throw BizException.badRequest("平台不正确");
         }
@@ -242,7 +242,13 @@ public class ShopService implements CourseGrant {
     }
 
     public void deleteGrouponRule(AdminPrincipal actor, long id) {
-        StoreScope.requireMaster(actor);
+        Long storeId = jdbc.query("""
+                SELECT store_id FROM groupon_rule WHERE id = ?
+                """, rs -> rs.next() ? rs.getLong(1) : null, id);
+        if (storeId == null) {
+            throw BizException.badRequest("团购券不存在");
+        }
+        StoreScope.requireStoreAccess(actor, storeId);
         Integer used = jdbc.queryForObject("SELECT COUNT(*) FROM groupon_redeem WHERE rule_id = ?", Integer.class, id);
         if (used != null && used > 0) {
             throw BizException.badRequest("券已核销，不能删除");
@@ -277,27 +283,42 @@ public class ShopService implements CourseGrant {
         return String.valueOf(orderId);
     }
 
-    public String saveCoach(AdminPrincipal actor, long storeId, String name, String phone, String intro) {
-        StoreScope.requireMaster(actor);
+    public String saveCoach(AdminPrincipal actor, long storeId, String name, String phone, String intro,
+                            String avatarUrl, String photoUrl, String specialty, Double rating, Integer lessonTaught,
+                            String certificateUrls) {
+        StoreScope.requireStoreAccess(actor, storeId);
+        requireText(name, "请填写教练姓名");
+        requireText(phone, "请填写手机号");
         long id = snowflake.next();
-        jdbc.update("INSERT INTO coach (id, store_id, name, phone, intro, created_at) VALUES (?,?,?,?,?,?)",
-                id, storeId, name.trim(), phone.trim(), RichHtml.clean(intro), timeProvider.now());
+        jdbc.update("""
+                INSERT INTO coach (id, store_id, name, phone, intro, avatar_url, photo_url, specialty, rating, lesson_taught, certificate_urls, created_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                """, id, storeId, name.trim(), phone.trim(), RichHtml.clean(intro), blank(avatarUrl), blank(photoUrl),
+                blank(specialty), rating == null ? 5.0 : rating, lessonTaught == null ? 0 : Math.max(0, lessonTaught),
+                blank(certificateUrls), timeProvider.now());
         return String.valueOf(id);
     }
 
-    public void updateCoach(AdminPrincipal actor, long id, String name, String phone, String intro) {
-        StoreScope.requireMaster(actor);
+    public void updateCoach(AdminPrincipal actor, long id, String name, String phone, String intro,
+                            String avatarUrl, String photoUrl, String specialty, Double rating, Integer lessonTaught,
+                            String certificateUrls) {
+        long storeId = coachStoreId(id);
+        StoreScope.requireStoreAccess(actor, storeId);
         requireText(name, "请填写教练姓名");
         requireText(phone, "请填写手机号");
-        int updated = jdbc.update("UPDATE coach SET name=?, phone=?, intro=? WHERE id=?",
-                name.trim(), phone.trim(), RichHtml.clean(intro), id);
+        int updated = jdbc.update("""
+                UPDATE coach SET name=?, phone=?, intro=?, avatar_url=?, photo_url=?, specialty=?, rating=?, lesson_taught=?, certificate_urls=?
+                WHERE id=?
+                """, name.trim(), phone.trim(), RichHtml.clean(intro), blank(avatarUrl), blank(photoUrl), blank(specialty),
+                rating == null ? 5.0 : rating, lessonTaught == null ? 0 : Math.max(0, lessonTaught), blank(certificateUrls), id);
         if (updated != 1) {
             throw BizException.badRequest("教练不存在");
         }
     }
 
     public void deleteCoach(AdminPrincipal actor, long id) {
-        StoreScope.requireMaster(actor);
+        long storeId = coachStoreId(id);
+        StoreScope.requireStoreAccess(actor, storeId);
         Integer lessons = jdbc.queryForObject("""
                 SELECT COUNT(*) FROM lesson_account a
                 JOIN course_pack p ON p.id = a.pack_id
@@ -313,33 +334,141 @@ public class ShopService implements CourseGrant {
         }
     }
 
-    public String savePack(AdminPrincipal actor, long coachId, String name, long priceFen, int lessonCount, String content, String audience) {
-        StoreScope.requireMaster(actor);
-        List<Map<String, Object>> coaches = jdbc.queryForList("SELECT store_id FROM coach WHERE id = ?", coachId);
-        if (coaches.isEmpty()) {
-            throw BizException.badRequest("教练不存在");
+    public String savePack(AdminPrincipal actor, long coachId, String name, long priceFen, int lessonCount,
+                           String content, String audience, String coverUrl, Integer minutesPerLesson) {
+        long storeId = coachStoreId(coachId);
+        StoreScope.requireStoreAccess(actor, storeId);
+        requireText(name, "请填写课程名称");
+        if (lessonCount < 1) {
+            throw BizException.badRequest("课时至少 1 节");
         }
         long id = snowflake.next();
+        int minutes = minutesPerLesson == null || minutesPerLesson < 1 ? 60 : minutesPerLesson;
         jdbc.update("""
-                INSERT INTO course_pack (id, coach_id, store_id, name, price_fen, lesson_count, content, audience, status, created_at)
-                VALUES (?,?,?,?,?,?,?,?, 'ON', ?)
-                """, id, coachId, coaches.get(0).get("store_id"), name.trim(), priceFen, lessonCount, blank(content), blank(audience), timeProvider.now());
+                INSERT INTO course_pack (id, coach_id, store_id, name, price_fen, lesson_count, content, audience, cover_url, minutes_per_lesson, status, created_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?, 'ON', ?)
+                """, id, coachId, storeId, name.trim(), priceFen, lessonCount, blank(content), blank(audience),
+                blank(coverUrl), minutes, timeProvider.now());
         return String.valueOf(id);
+    }
+
+    public void updatePack(AdminPrincipal actor, long id, String name, long priceFen, int lessonCount,
+                           String content, String audience, String coverUrl, Integer minutesPerLesson, String status) {
+        long storeId = packStoreId(id);
+        StoreScope.requireStoreAccess(actor, storeId);
+        requireText(name, "请填写课程名称");
+        if (lessonCount < 1) {
+            throw BizException.badRequest("课时至少 1 节");
+        }
+        String nextStatus = "OFF".equals(status) ? "OFF" : "ON";
+        int minutes = minutesPerLesson == null || minutesPerLesson < 1 ? 60 : minutesPerLesson;
+        int updated = jdbc.update("""
+                UPDATE course_pack SET name=?, price_fen=?, lesson_count=?, content=?, audience=?, cover_url=?, minutes_per_lesson=?, status=?
+                WHERE id=?
+                """, name.trim(), priceFen, lessonCount, blank(content), blank(audience), blank(coverUrl), minutes, nextStatus, id);
+        if (updated != 1) {
+            throw BizException.badRequest("课程不存在");
+        }
+    }
+
+    public void deletePack(AdminPrincipal actor, long id) {
+        long storeId = packStoreId(id);
+        StoreScope.requireStoreAccess(actor, storeId);
+        Integer lessons = jdbc.queryForObject("SELECT COUNT(*) FROM lesson_account WHERE pack_id = ?", Integer.class, id);
+        if (lessons != null && lessons > 0) {
+            throw BizException.badRequest("已有学员课时，不能删除");
+        }
+        int updated = jdbc.update("DELETE FROM course_pack WHERE id = ?", id);
+        if (updated != 1) {
+            throw BizException.badRequest("课程不存在");
+        }
     }
 
     public List<Map<String, Object>> coaches(long storeId) {
         return jdbc.queryForList("""
-                SELECT c.id, s.name AS store_name, c.name, c.phone, c.intro
+                SELECT c.id, s.name AS store_name, s.cover_url AS store_cover_url, c.name, c.phone, c.intro,
+                       c.avatar_url, c.photo_url, c.specialty, c.rating, c.lesson_taught, c.certificate_urls,
+                       (SELECT MIN(p.price_fen) FROM course_pack p WHERE p.coach_id = c.id AND p.status = 'ON') AS min_price_fen,
+                       (SELECT COUNT(*) FROM course_pack p WHERE p.coach_id = c.id AND p.status = 'ON') AS pack_count
                 FROM coach c JOIN store s ON s.id = c.store_id
                 WHERE c.store_id = ? ORDER BY c.id
                 """, storeId);
     }
 
+    public Map<String, Object> coachDetail(long coachId) {
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT c.id, c.store_id, s.name AS store_name, s.cover_url AS store_cover_url, c.name, c.phone, c.intro,
+                       c.avatar_url, c.photo_url, c.specialty, c.rating, c.lesson_taught, c.certificate_urls,
+                       (SELECT COUNT(*) FROM course_pack p WHERE p.coach_id = c.id AND p.status = 'ON') AS pack_count
+                FROM coach c JOIN store s ON s.id = c.store_id
+                WHERE c.id = ?
+                """, coachId);
+        if (rows.isEmpty()) {
+            throw BizException.badRequest("教练不存在");
+        }
+        Map<String, Object> coach = rows.get(0);
+        coach.put("packs", packsByCoach(coachId, true));
+        return coach;
+    }
+
     public List<Map<String, Object>> packs(long storeId) {
         return jdbc.queryForList("""
-                SELECT id, coach_id, store_id, name, price_fen, lesson_count, content, audience, status
+                SELECT id, coach_id, store_id, name, price_fen, lesson_count, content, audience, cover_url, minutes_per_lesson, status
                 FROM course_pack WHERE store_id = ? AND status = 'ON' ORDER BY id
                 """, storeId);
+    }
+
+    public List<Map<String, Object>> adminPacks(AdminPrincipal actor, long storeId) {
+        StoreScope.requireStoreAccess(actor, storeId);
+        return jdbc.queryForList("""
+                SELECT p.id, p.coach_id, c.name AS coach_name, p.store_id, p.name, p.price_fen, p.lesson_count,
+                       p.content, p.audience, p.cover_url, p.minutes_per_lesson, p.status
+                FROM course_pack p JOIN coach c ON c.id = p.coach_id
+                WHERE p.store_id = ? ORDER BY p.id DESC
+                """, storeId);
+    }
+
+    public Map<String, Object> packDetail(long packId) {
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT p.id, p.coach_id, p.store_id, p.name, p.price_fen, p.lesson_count, p.content, p.audience,
+                       p.cover_url, p.minutes_per_lesson, p.status,
+                       c.name AS coach_name, c.photo_url AS coach_photo_url, c.avatar_url AS coach_avatar_url
+                FROM course_pack p JOIN coach c ON c.id = p.coach_id
+                WHERE p.id = ?
+                """, packId);
+        if (rows.isEmpty() || !"ON".equals(rows.get(0).get("status"))) {
+            throw BizException.badRequest("课程不存在");
+        }
+        return rows.get(0);
+    }
+
+    private List<Map<String, Object>> packsByCoach(long coachId, boolean onlyOn) {
+        if (onlyOn) {
+            return jdbc.queryForList("""
+                    SELECT id, coach_id, store_id, name, price_fen, lesson_count, content, audience, cover_url, minutes_per_lesson, status
+                    FROM course_pack WHERE coach_id = ? AND status = 'ON' ORDER BY id
+                    """, coachId);
+        }
+        return jdbc.queryForList("""
+                SELECT id, coach_id, store_id, name, price_fen, lesson_count, content, audience, cover_url, minutes_per_lesson, status
+                FROM course_pack WHERE coach_id = ? ORDER BY id
+                """, coachId);
+    }
+
+    private long coachStoreId(long coachId) {
+        Long storeId = jdbc.query("SELECT store_id FROM coach WHERE id = ?", rs -> rs.next() ? rs.getLong(1) : null, coachId);
+        if (storeId == null) {
+            throw BizException.badRequest("教练不存在");
+        }
+        return storeId;
+    }
+
+    private long packStoreId(long packId) {
+        Long storeId = jdbc.query("SELECT store_id FROM course_pack WHERE id = ?", rs -> rs.next() ? rs.getLong(1) : null, packId);
+        if (storeId == null) {
+            throw BizException.badRequest("课程不存在");
+        }
+        return storeId;
     }
 
     public OrderService.Created buyPack(long userId, long packId, long agreementId, int agreementVersion, String idempotencyKey) {
@@ -377,22 +506,50 @@ public class ShopService implements CourseGrant {
     }
 
     public List<Map<String, Object>> myLessons(long userId) {
-        return jdbc.queryForList("""
+        List<Map<String, Object>> rows = jdbc.queryForList("""
                 SELECT a.pack_id, a.remaining, p.name
                 FROM lesson_account a JOIN course_pack p ON p.id = a.pack_id
                 WHERE a.user_id = ? ORDER BY a.id
                 """, userId);
+        rows.forEach(row -> {
+            if (row.get("pack_id") != null) {
+                row.put("pack_id", String.valueOf(row.get("pack_id")));
+            }
+        });
+        return rows;
     }
 
     public String lessonQr(long userId, long packId) {
-        Integer remaining = jdbc.queryForObject(
-                "SELECT remaining FROM lesson_account WHERE user_id = ? AND pack_id = ?", Integer.class, userId, packId);
-        if (remaining == null || remaining < 1) {
+        List<Map<String, Object>> rows = jdbc.queryForList(
+                "SELECT remaining FROM lesson_account WHERE user_id = ? AND pack_id = ?", userId, packId);
+        if (rows.isEmpty()) {
+            throw BizException.rejected("没有剩余课时");
+        }
+        int remaining = ((Number) rows.get(0).get("remaining")).intValue();
+        if (remaining < 1) {
             throw BizException.rejected("没有剩余课时");
         }
         String token = "lesson:" + UUID.randomUUID();
-        lessonTokens.put(token, new LessonToken(userId, packId, Instant.now().plusSeconds(60)));
+        lessonTokens.put(token, new LessonToken(userId, packId, Instant.now().plusSeconds(120)));
         return token;
+    }
+
+    public Map<String, Object> coachStatus(long userId) {
+        GymUser user = userMapper.selectById(userId);
+        if (user == null || user.getPhone() == null || user.getPhone().isBlank()) {
+            return Map.of("coach", false);
+        }
+        List<Map<String, Object>> rows = jdbc.queryForList(
+                "SELECT id, name, store_id FROM coach WHERE phone = ? ORDER BY id LIMIT 1", user.getPhone());
+        if (rows.isEmpty()) {
+            return Map.of("coach", false);
+        }
+        Map<String, Object> row = rows.get(0);
+        return Map.of(
+                "coach", true,
+                "id", String.valueOf(row.get("id")),
+                "name", row.get("name") == null ? "" : String.valueOf(row.get("name")),
+                "storeId", String.valueOf(row.get("store_id")));
     }
 
     @Transactional

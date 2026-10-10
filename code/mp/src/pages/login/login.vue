@@ -97,14 +97,14 @@ onLoad(async () => {
 </script>
 
 <style scoped>
-.page { min-height: 100vh; padding: 80rpx 40rpx 48rpx; background: #f6f3ee; box-sizing: border-box; }
+.page { min-height: 100vh; padding: 80rpx 40rpx 48rpx; background: #f5f6f8; box-sizing: border-box; }
 .hero { padding: 24rpx 8rpx 56rpx; }
-.mark { width: 96rpx; height: 96rpx; border-radius: 32rpx; background: #1c1917; color: #fff; text-align: center; line-height: 96rpx; font-size: 36rpx; font-weight: 800; }
+.mark { width: 96rpx; height: 96rpx; border-radius: 20rpx; background: #1f2937; color: #fff; text-align: center; line-height: 96rpx; font-size: 36rpx; font-weight: 800; }
 .title { display: block; margin-top: 28rpx; font-size: 52rpx; font-weight: 700; }
-.text { display: block; margin-top: 16rpx; color: #57534e; line-height: 1.6; }
-.primary { margin-top: 12rpx; background: #c2410c; color: #fff; }
-.local { margin-top: 48rpx; padding: 28rpx; background: #fff; border-radius: 28rpx; }
-.label { color: #78716c; font-size: 24rpx; }
-.input { margin: 16rpx 0 20rpx; background: #f6f3ee; }
-.ghost { background: #fff7ed; color: #9a3412; }
+.text { display: block; margin-top: 16rpx; color: #525252; line-height: 1.6; }
+.primary { margin-top: 12rpx; }
+.local { margin-top: 48rpx; padding: 28rpx; background: #fff; border-radius: 20rpx; border: 1px solid #eceff3; }
+.label { color: #8a8f98; font-size: 24rpx; }
+.input { margin: 16rpx 0 20rpx; height: 88rpx; padding: 0 24rpx; line-height: 88rpx; background: #f5f6f8; }
+.ghost { background: #fff4ed; color: #c2410c; }
 </style>

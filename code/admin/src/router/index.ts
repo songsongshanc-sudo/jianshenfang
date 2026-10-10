@@ -15,6 +15,7 @@ import GatesView from "../views/GatesView.vue";
 import DoorsView from "../views/DoorsView.vue";
 import TicketsView from "../views/TicketsView.vue";
 import OpsView from "../views/OpsView.vue";
+import CoachesView from "../views/CoachesView.vue";
 import { useSessionStore } from "../stores/session";
 
 export const router = createRouter({
@@ -42,7 +43,7 @@ export const router = createRouter({
         { path: "lost", component: TicketsView },
         { path: "equipment", component: OpsView },
         { path: "groupon", component: OpsView },
-        { path: "coaches", component: OpsView },
+        { path: "coaches", component: CoachesView },
         { path: "franchise", component: OpsView },
         { path: "messages", component: OpsView },
         { path: "violations", component: OpsView }
@@ -59,7 +60,7 @@ router.beforeEach((to) => {
   if (to.path === "/login" && session.token) {
     return "/";
   }
-  const masterOnly = ["/stores", "/accounts", "/banners", "/notices", "/agreements", "/configs", "/equipment", "/groupon", "/coaches", "/franchise", "/messages", "/violations"];
+  const masterOnly = ["/stores", "/accounts", "/banners", "/notices", "/agreements", "/configs", "/equipment", "/franchise", "/messages", "/violations"];
   if (session.role === "STORE" && masterOnly.includes(to.path)) {
     return "/";
   }

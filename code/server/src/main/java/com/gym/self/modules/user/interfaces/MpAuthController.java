@@ -5,8 +5,10 @@ import com.gym.self.common.api.BizException;
 import com.gym.self.modules.user.application.MpAuthService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -51,6 +53,11 @@ public class MpAuthController {
         return ApiResponse.ok(mpAuthService.me(parsed));
     }
 
+    @PutMapping("/me")
+    public ApiResponse<MpAuthService.MeView> updateProfile(@Valid @RequestBody ProfileRequest request) {
+        return ApiResponse.ok(mpAuthService.updateProfile(request.nickname()));
+    }
+
     @PostMapping("/files/presign")
     public ApiResponse<PresignView> presign(@Valid @RequestBody PresignRequest request) {
         if (!"FACE".equals(request.biz())) {
@@ -92,5 +99,8 @@ public class MpAuthController {
     }
 
     public record FaceRequest(@NotBlank String objectKey) {
+    }
+
+    public record ProfileRequest(@Size(max = 32) String nickname) {
     }
 }

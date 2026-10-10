@@ -9,8 +9,20 @@
       <text>我已阅读并同意</text>
       <text class="link" @click.stop="openAgreement">《会员协议》</text>
     </view>
-    <button v-if="!paid" type="primary" :disabled="!canPay" @click="submit">{{ buttonText }}</button>
-    <button v-else-if="created?.mockPay && created.status === 'PENDING'" type="primary" @click="pay">模拟支付成功</button>
+    <button
+      v-if="!paid && created?.mockPay && created.status === 'PENDING'"
+      type="primary"
+      @click="pay"
+    >模拟支付成功</button>
+    <button
+      v-else-if="!paid && created && !created.mockPay && created.status === 'PENDING'"
+      type="primary"
+      :disabled="submitting"
+      @click="continuePay"
+    >{{ submitting ? "调起支付…" : "继续支付" }}</button>
+    <button v-else-if="!paid" type="primary" :disabled="!canPay || submitting" @click="submit">
+      {{ submitting ? "下单中…" : buttonText }}
+    </button>
     <view v-if="paid" class="done">支付成功，会员已生效</view>
   </view>
 </template>
@@ -19,7 +31,16 @@
 import { computed, ref } from "vue";
 import { onLoad } from "@dcloudio/uni-app";
 import { cards, storeDetail, yuan, type CardItem } from "../../../api/catalog";
-import { createOrder, currentAgreement, mockPay, orderDetail, type AgreementDoc, type CreatedOrder } from "../../../api/order";
+import {
+  createOrder,
+  currentAgreement,
+  mockPay,
+  orderDetail,
+  requestWxPay,
+  waitUntilPaid,
+  type AgreementDoc,
+  type CreatedOrder,
+} from "../../../api/order";
 
 const card = ref<CardItem | null>(null);
 const storeName = ref("");
@@ -29,10 +50,12 @@ const checked = ref(false);
 const seconds = ref(0);
 const created = ref<CreatedOrder | null>(null);
 const paid = ref(false);
+const submitting = ref(false);
+const paying = ref(false);
 const idempotencyKey = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 let timer = 0;
 
-const canPay = computed(() => checked.value && seconds.value === 0 && !created.value);
+const canPay = computed(() => checked.value && seconds.value === 0 && !created.value && !submitting.value);
 const buttonText = computed(() => {
   if (!checked.value) return "请先勾选协议";
   if (seconds.value > 0) return `请阅读 ${seconds.value} 秒`;
@@ -83,35 +106,89 @@ function openAgreement() {
 }
 
 async function submit() {
-  if (!canPay.value || !card.value || !agreement.value) {
+  if (!canPay.value || !card.value || !agreement.value || submitting.value) {
     if (!agreement.value) {
       uni.showToast({ title: "协议还没有发布", icon: "none" });
     }
     return;
   }
-  created.value = await createOrder({
-    storeId: storeId.value,
-    cardProductId: card.value.id,
-    agreementId: agreement.value.id,
-    agreementVersion: agreement.value.versionNo,
-  }, idempotencyKey);
-  if (created.value.status === "PAID") {
-    paid.value = true;
+  submitting.value = true;
+  try {
+    created.value = await createOrder({
+      storeId: String(storeId.value),
+      cardProductId: String(card.value.id),
+      agreementId: String(agreement.value.id),
+      agreementVersion: agreement.value.versionNo,
+    }, idempotencyKey);
+    if (created.value.status === "PAID") {
+      paid.value = true;
+      return;
+    }
+    if (!created.value.mockPay) {
+      await finishWxPay();
+    }
+  } catch {
+    // 订单已创建时保留，可点「继续支付」
+  } finally {
+    submitting.value = false;
+  }
+}
+
+async function continuePay() {
+  if (!created.value || created.value.mockPay || submitting.value || !card.value || !agreement.value) {
     return;
   }
-  if (!created.value.mockPay) {
-    uni.showToast({ title: "微信支付尚未配置", icon: "none" });
+  submitting.value = true;
+  try {
+    created.value = await createOrder({
+      storeId: String(storeId.value),
+      cardProductId: String(card.value.id),
+      agreementId: String(agreement.value.id),
+      agreementVersion: agreement.value.versionNo,
+    }, idempotencyKey);
+    if (created.value.status === "PAID") {
+      paid.value = true;
+      return;
+    }
+    await finishWxPay();
+  } catch {
+    uni.showToast({ title: "支付未完成", icon: "none" });
+  } finally {
+    submitting.value = false;
+  }
+}
+
+async function finishWxPay() {
+  if (!created.value) {
+    return;
+  }
+  await requestWxPay(created.value);
+  const fresh = await waitUntilPaid(String(created.value.orderId));
+  created.value = { ...created.value, status: fresh.status };
+  paid.value = fresh.status === "PAID";
+  if (paid.value) {
+    uni.showToast({ title: "会员已生效", icon: "none" });
+  } else {
+    uni.showToast({ title: "已支付，会员稍后生效", icon: "none" });
   }
 }
 
 async function pay() {
-  if (!created.value) {
+  if (!created.value || paying.value) {
     return;
   }
-  const detail = await mockPay(created.value.orderId);
-  const fresh = await orderDetail(detail.id);
-  created.value = { ...created.value, status: fresh.status };
-  paid.value = fresh.status === "PAID";
+  paying.value = true;
+  try {
+    const detail = await mockPay(String(created.value.orderId));
+    const fresh = await orderDetail(String(detail.id || created.value.orderId));
+    created.value = { ...created.value, status: fresh.status };
+    paid.value = fresh.status === "PAID";
+    if (paid.value) {
+      uni.showToast({ title: "会员已生效", icon: "none" });
+    }
+  } finally {
+    paying.value = false;
+  }
 }
 </script>
 

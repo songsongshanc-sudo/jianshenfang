@@ -22,4 +22,10 @@ public final class StoreScope {
             throw BizException.forbidden("只有总账号可以操作");
         }
     }
+
+    public static void requireStoreAccess(AdminPrincipal principal, long storeId) {
+        if (!principal.master() && (principal.storeId() == null || !principal.storeId().equals(storeId))) {
+            throw BizException.forbidden("不能操作其他门店");
+        }
+    }
 }

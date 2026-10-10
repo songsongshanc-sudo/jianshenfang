@@ -23,6 +23,8 @@ import com.gym.self.modules.order.domain.TradeOrderMapper;
 import com.gym.self.modules.order.pay.PayGateway;
 import com.gym.self.modules.store.domain.Store;
 import com.gym.self.modules.store.domain.StoreMapper;
+import com.gym.self.modules.user.domain.GymUser;
+import com.gym.self.modules.user.domain.GymUserMapper;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -41,6 +43,7 @@ public class OrderService {
     private final AgreementMapper agreementMapper;
     private final AppConfigMapper appConfigMapper;
     private final StoreMapper storeMapper;
+    private final GymUserMapper gymUserMapper;
     private final CardService cardService;
     private final PayGateway payGateway;
     private final Snowflake snowflake;
@@ -51,8 +54,9 @@ public class OrderService {
     public OrderService(TradeOrderMapper tradeOrderMapper, PaymentMapper paymentMapper,
                         CardProductMapper cardProductMapper, MembershipMapper membershipMapper,
                         AgreementMapper agreementMapper, AppConfigMapper appConfigMapper, StoreMapper storeMapper,
-                        CardService cardService, PayGateway payGateway, Snowflake snowflake, TimeProvider timeProvider,
-                        ObjectProvider<CourseGrant> courseGrant, GateFaceSync gateFaceSync) {
+                        GymUserMapper gymUserMapper, CardService cardService, PayGateway payGateway,
+                        Snowflake snowflake, TimeProvider timeProvider, ObjectProvider<CourseGrant> courseGrant,
+                        GateFaceSync gateFaceSync) {
         this.tradeOrderMapper = tradeOrderMapper;
         this.paymentMapper = paymentMapper;
         this.cardProductMapper = cardProductMapper;
@@ -60,6 +64,7 @@ public class OrderService {
         this.agreementMapper = agreementMapper;
         this.appConfigMapper = appConfigMapper;
         this.storeMapper = storeMapper;
+        this.gymUserMapper = gymUserMapper;
         this.cardService = cardService;
         this.payGateway = payGateway;
         this.snowflake = snowflake;
@@ -136,7 +141,7 @@ public class OrderService {
             throw exception;
         }
         PayGateway.Prepared prepared = payGateway.prepare(order.getOrderNo(), store.getName() + "-" + card.getName(),
-                order.getAmountFen());
+                order.getAmountFen(), openid(userId));
         Payment payment = new Payment();
         payment.setId(snowflake.next());
         payment.setOrderId(order.getId());
@@ -191,7 +196,7 @@ public class OrderService {
         order.setCreatedAt(now);
         order.setUpdatedAt(now);
         tradeOrderMapper.insert(order);
-        PayGateway.Prepared prepared = payGateway.prepare(order.getOrderNo(), name, priceFen);
+        PayGateway.Prepared prepared = payGateway.prepare(order.getOrderNo(), name, priceFen, openid(userId));
         Payment payment = new Payment();
         payment.setId(snowflake.next());
         payment.setOrderId(order.getId());
@@ -229,8 +234,27 @@ public class OrderService {
         if ("PAID".equals(order.getStatus()) || "REFUNDED".equals(order.getStatus())) {
             return toView(order);
         }
+        if ("PENDING".equals(order.getStatus())) {
+            payGateway.close(order.getOrderNo());
+        }
         closePending(order, timeProvider.now());
         return toView(reload(orderId));
+    }
+
+    @Transactional
+    public void fulfillByNotify(String orderNo, String transactionId, long paidFen, String rawNotify) {
+        if (orderNo == null || orderNo.isBlank()) {
+            throw BizException.badRequest("商户订单号不正确");
+        }
+        TradeOrder order = tradeOrderMapper.selectOne(new LambdaQueryWrapper<TradeOrder>()
+                .eq(TradeOrder::getOrderNo, orderNo));
+        if (order == null) {
+            throw BizException.badRequest("订单不存在");
+        }
+        if (order.getAmountFen() == null || order.getAmountFen() != paidFen) {
+            throw BizException.rejected("支付金额不正确");
+        }
+        fulfill(order.getId(), transactionId, rawNotify);
     }
 
     @Transactional
@@ -465,9 +489,24 @@ public class OrderService {
 
     private Created created(TradeOrder order) {
         Payment payment = paymentMapper.selectOne(new LambdaQueryWrapper<Payment>().eq(Payment::getOrderId, order.getId()));
+        if (payGateway.mockEnabled() || payment == null || payment.getPrepayId() == null || payment.getPrepayId().isBlank()
+                || !"PENDING".equals(order.getStatus())) {
+            return new Created(String.valueOf(order.getId()), order.getOrderNo(), order.getAmountFen(), order.getStatus(),
+                    payGateway.mockEnabled(), "", "", payment == null ? "" : "prepay_id=" + payment.getPrepayId(),
+                    "RSA", "");
+        }
+        PayGateway.Prepared prepared = payGateway.resign(payment.getPrepayId());
         return new Created(String.valueOf(order.getId()), order.getOrderNo(), order.getAmountFen(), order.getStatus(),
-                payGateway.mockEnabled(), "", "", payment == null ? "" : "prepay_id=" + payment.getPrepayId(),
-                "RSA", "");
+                false, prepared.timeStamp(), prepared.nonceStr(), prepared.payPackage(), prepared.signType(),
+                prepared.paySign());
+    }
+
+    private String openid(long userId) {
+        GymUser user = gymUserMapper.selectById(userId);
+        if (user == null || user.getOpenid() == null || user.getOpenid().isBlank()) {
+            throw BizException.badRequest("请重新登录后再支付");
+        }
+        return user.getOpenid();
     }
 
     private OrderView toView(TradeOrder order) {

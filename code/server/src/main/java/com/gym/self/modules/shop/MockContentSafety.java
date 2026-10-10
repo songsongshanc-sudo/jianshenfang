@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 public class MockContentSafety implements ContentSafety {
 
     @Override
-    public void check(String text) {
+    public void check(long userId, String text) {
         if (text != null && text.contains("违禁")) {
             throw BizException.rejected("内容未通过安全检查");
         }

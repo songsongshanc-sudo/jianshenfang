@@ -7,15 +7,16 @@
     </view>
     <map
       class="map"
+      :class="{ fill: stores.length === 0 }"
       :latitude="center.latitude"
       :longitude="center.longitude"
       :markers="markers"
       :scale="11"
       @markertap="onMarker"
     />
-    <view v-if="stores.length === 0" class="empty">没有找到门店</view>
-    <view v-for="item in stores" :key="item.id" class="item" @click="choose(item)">
-      <view>
+    <view v-if="stores.length === 0" class="empty">没有找到门店，可在地图上查看位置</view>
+    <view v-for="item in stores" :key="item.id" class="item" @click="openIntro(item)">
+      <view class="item-body">
         <text class="name">{{ item.name }}</text>
         <text class="meta">{{ item.province }} {{ item.city }} {{ item.address }}</text>
         <text v-if="formatDistance(item.distanceMeters)" class="meta">{{ formatDistance(item.distanceMeters) }}</text>
@@ -29,9 +30,7 @@
 import { computed, ref } from "vue";
 import { onShow } from "@dcloudio/uni-app";
 import { formatDistance, listStores, type PublicStore } from "../../../api/catalog";
-import { useCurrentStore } from "../../../stores/currentStore";
 
-const current = useCurrentStore();
 const province = ref("");
 const city = ref("");
 const stores = ref<PublicStore[]>([]);
@@ -83,9 +82,8 @@ async function load() {
   }
 }
 
-function choose(item: PublicStore) {
-  current.setStoreId(item.id);
-  uni.navigateBack();
+function openIntro(item: PublicStore) {
+  uni.navigateTo({ url: `/package-store/pages/intro/intro?storeId=${item.id}` });
 }
 
 function navigate(item: PublicStore) {
@@ -99,7 +97,7 @@ function navigate(item: PublicStore) {
 
 function onMarker(event: { detail: { markerId: number } }) {
   const item = stores.value[event.detail.markerId - 1];
-  if (item) choose(item);
+  if (item) openIntro(item);
 }
 
 onShow(async () => {
@@ -109,12 +107,42 @@ onShow(async () => {
 </script>
 
 <style scoped>
-.page { padding: 24rpx 24rpx 48rpx; }
-.filters { display: flex; gap: 12rpx; align-items: center; }
-.input { flex: 1; background: #fff; }
-.map { width: 100%; height: 420rpx; margin: 16rpx 0; border-radius: 24rpx; overflow: hidden; }
-.item { display: flex; justify-content: space-between; align-items: center; gap: 16rpx; background: #fff; padding: 24rpx; border-radius: 24rpx; margin-bottom: 16rpx; }
+.page {
+  min-height: 100vh;
+  padding: 24rpx 24rpx 48rpx;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+.filters { display: flex; gap: 12rpx; align-items: center; flex-shrink: 0; }
+.input { flex: 1; height: 88rpx; padding: 0 24rpx; line-height: 88rpx; background: #fff; }
+.map {
+  width: 100%;
+  height: 420rpx;
+  margin: 16rpx 0;
+  border-radius: 20rpx;
+  overflow: hidden;
+  flex-shrink: 0;
+  border: 1px solid #eceff3;
+}
+.map.fill {
+  flex: 1;
+  min-height: 70vh;
+  height: 70vh;
+}
+.item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16rpx;
+  background: #fff;
+  padding: 24rpx;
+  border-radius: 20rpx;
+  margin-bottom: 16rpx;
+  border: 1px solid #eceff3;
+}
+.item-body { flex: 1; min-width: 0; }
 .name { display: block; font-size: 30rpx; font-weight: 700; }
-.meta { display: block; margin-top: 6rpx; color: #78716c; font-size: 24rpx; }
-.empty { color: #888; text-align: center; margin-top: 40rpx; }
+.meta { display: block; margin-top: 6rpx; color: #8a8f98; font-size: 24rpx; }
+.empty { color: #8a8f98; text-align: center; padding: 12rpx 0 8rpx; font-size: 24rpx; }
 </style>

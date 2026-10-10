@@ -92,12 +92,35 @@ public class ShopController {
 
     @GetMapping("/api/mp/coaches")
     public ApiResponse<List<Map<String, Object>>> coaches(@RequestParam String storeId) {
-        return ApiResponse.ok(shopService.coaches(parse(storeId)));
+        List<Map<String, Object>> rows = shopService.coaches(parse(storeId));
+        rows.forEach(this::stringifyCoach);
+        return ApiResponse.ok(rows);
+    }
+
+    @GetMapping("/api/mp/coaches/{id}")
+    public ApiResponse<Map<String, Object>> coachDetail(@PathVariable String id) {
+        Map<String, Object> coach = shopService.coachDetail(parse(id));
+        stringifyCoach(coach);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> packs = (List<Map<String, Object>>) coach.get("packs");
+        if (packs != null) {
+            packs.forEach(this::stringifyPack);
+        }
+        return ApiResponse.ok(coach);
     }
 
     @GetMapping("/api/mp/packs")
     public ApiResponse<List<Map<String, Object>>> packs(@RequestParam String storeId) {
-        return ApiResponse.ok(shopService.packs(parse(storeId)));
+        List<Map<String, Object>> rows = shopService.packs(parse(storeId));
+        rows.forEach(this::stringifyPack);
+        return ApiResponse.ok(rows);
+    }
+
+    @GetMapping("/api/mp/packs/{id}")
+    public ApiResponse<Map<String, Object>> packDetail(@PathVariable String id) {
+        Map<String, Object> pack = shopService.packDetail(parse(id));
+        stringifyPack(pack);
+        return ApiResponse.ok(pack);
     }
 
     @PostMapping("/api/mp/packs/{id}/orders")
@@ -105,6 +128,11 @@ public class ShopController {
                                                  @RequestHeader("Idempotency-Key") String idempotencyKey) {
         return ApiResponse.ok(shopService.buyPack(CurrentMp.formal().userId(), parse(id), parse(request.agreementId()),
                 request.agreementVersion(), idempotencyKey));
+    }
+
+    @GetMapping("/api/mp/coach/me")
+    public ApiResponse<Map<String, Object>> coachMe() {
+        return ApiResponse.ok(shopService.coachStatus(CurrentMp.formal().userId()));
     }
 
     @GetMapping("/api/mp/lessons")
@@ -238,7 +266,9 @@ public class ShopController {
 
     @PutMapping("/api/admin/coaches/{id}")
     public ApiResponse<Void> updateCoach(@PathVariable String id, @Valid @RequestBody CoachUpdate request) {
-        shopService.updateCoach(CurrentAdmin.get(), parse(id), request.name(), request.phone(), request.intro());
+        shopService.updateCoach(CurrentAdmin.get(), parse(id), request.name(), request.phone(), request.intro(),
+                request.avatarUrl(), request.photoUrl(), request.specialty(), request.rating(), request.lessonTaught(),
+                request.certificateUrls());
         return ApiResponse.ok(null);
     }
 
@@ -250,13 +280,41 @@ public class ShopController {
 
     @PostMapping("/api/admin/coaches")
     public ApiResponse<IdView> coach(@Valid @RequestBody CoachRequest request) {
-        return ApiResponse.ok(new IdView(shopService.saveCoach(CurrentAdmin.get(), parse(request.storeId()), request.name(), request.phone(), request.intro())));
+        return ApiResponse.ok(new IdView(shopService.saveCoach(CurrentAdmin.get(), parse(request.storeId()), request.name(),
+                request.phone(), request.intro(), request.avatarUrl(), request.photoUrl(), request.specialty(),
+                request.rating(), request.lessonTaught(), request.certificateUrls())));
+    }
+
+    @GetMapping("/api/admin/packs")
+    public ApiResponse<List<Map<String, Object>>> adminPacks(@RequestParam String storeId) {
+        List<Map<String, Object>> rows = shopService.adminPacks(CurrentAdmin.get(), parse(storeId));
+        rows.forEach(row -> {
+            stringifyPack(row);
+            if (row.get("coach_id") != null) {
+                row.put("coach_id", String.valueOf(row.get("coach_id")));
+            }
+        });
+        return ApiResponse.ok(rows);
     }
 
     @PostMapping("/api/admin/packs")
     public ApiResponse<IdView> pack(@Valid @RequestBody PackSave request) {
         return ApiResponse.ok(new IdView(shopService.savePack(CurrentAdmin.get(), parse(request.coachId()), request.name(),
-                request.priceFen(), request.lessonCount(), request.content(), request.audience())));
+                request.priceFen(), request.lessonCount(), request.content(), request.audience(), request.coverUrl(),
+                request.minutesPerLesson())));
+    }
+
+    @PutMapping("/api/admin/packs/{id}")
+    public ApiResponse<Void> updatePack(@PathVariable String id, @Valid @RequestBody PackUpdate request) {
+        shopService.updatePack(CurrentAdmin.get(), parse(id), request.name(), request.priceFen(), request.lessonCount(),
+                request.content(), request.audience(), request.coverUrl(), request.minutesPerLesson(), request.status());
+        return ApiResponse.ok(null);
+    }
+
+    @DeleteMapping("/api/admin/packs/{id}")
+    public ApiResponse<Void> deletePack(@PathVariable String id) {
+        shopService.deletePack(CurrentAdmin.get(), parse(id));
+        return ApiResponse.ok(null);
     }
 
     @GetMapping("/api/admin/franchise")
@@ -304,6 +362,27 @@ public class ShopController {
     @GetMapping("/api/admin/users/{id}/face")
     public ApiResponse<Map<String, Object>> face(@PathVariable String id) {
         return ApiResponse.ok(shopService.faceRecord(CurrentAdmin.get(), parse(id)));
+    }
+
+    private void stringifyCoach(Map<String, Object> row) {
+        if (row.get("id") != null) {
+            row.put("id", String.valueOf(row.get("id")));
+        }
+        if (row.get("store_id") != null) {
+            row.put("store_id", String.valueOf(row.get("store_id")));
+        }
+    }
+
+    private void stringifyPack(Map<String, Object> row) {
+        if (row.get("id") != null) {
+            row.put("id", String.valueOf(row.get("id")));
+        }
+        if (row.get("coach_id") != null) {
+            row.put("coach_id", String.valueOf(row.get("coach_id")));
+        }
+        if (row.get("store_id") != null) {
+            row.put("store_id", String.valueOf(row.get("store_id")));
+        }
     }
 
     private static long parse(String id) {
@@ -355,13 +434,21 @@ public class ShopController {
     public record GrouponUpdateRequest(@NotBlank String storeId, @NotBlank String platform, @NotBlank String cardProductId) {
     }
 
-    public record CoachUpdate(@NotBlank String name, @NotBlank String phone, String intro) {
+    public record CoachUpdate(@NotBlank String name, @NotBlank String phone, String intro, String avatarUrl, String photoUrl,
+                              String specialty, Double rating, Integer lessonTaught, String certificateUrls) {
     }
 
-    public record CoachRequest(@NotBlank String storeId, @NotBlank String name, @NotBlank String phone, String intro) {
+    public record CoachRequest(@NotBlank String storeId, @NotBlank String name, @NotBlank String phone, String intro,
+                               String avatarUrl, String photoUrl, String specialty, Double rating, Integer lessonTaught,
+                               String certificateUrls) {
     }
 
-    public record PackSave(@NotBlank String coachId, @NotBlank String name, long priceFen, int lessonCount, String content, String audience) {
+    public record PackSave(@NotBlank String coachId, @NotBlank String name, long priceFen, int lessonCount, String content,
+                           String audience, String coverUrl, Integer minutesPerLesson) {
+    }
+
+    public record PackUpdate(@NotBlank String name, long priceFen, int lessonCount, String content, String audience,
+                             String coverUrl, Integer minutesPerLesson, String status) {
     }
 
     public record FranchiseRequest(String intro, String hotline, String points, String support, String steps) {

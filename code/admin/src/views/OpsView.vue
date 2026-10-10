@@ -21,7 +21,7 @@
 
     <el-form v-else-if="route.path === '/groupon'" :inline="true" @submit.prevent="save">
       <el-form-item label="门店">
-        <el-select v-model="form.storeId" placeholder="选择门店" style="width: 180px" @change="onGrouponStore">
+        <el-select v-model="form.storeId" placeholder="选择门店" style="width: 180px" :disabled="session.role === 'STORE'" @change="onGrouponStore">
           <el-option v-for="store in stores" :key="store.id" :label="store.name" :value="store.id" />
         </el-select>
       </el-form-item>
@@ -192,6 +192,7 @@ import ContentPreview from "../components/ContentPreview.vue";
 import ImageField from "../components/ImageField.vue";
 import RichTextField from "../components/RichTextField.vue";
 import { http, type ApiBody } from "../api/http";
+import { useSessionStore } from "../stores/session";
 
 interface StoreRow {
   id: string;
@@ -212,6 +213,7 @@ interface CoachRow {
 }
 
 const route = useRoute();
+const session = useSessionStore();
 const rows = ref<Record<string, unknown>[]>([]);
 const form = reactive<Record<string, string>>({});
 const stores = ref<StoreRow[]>([]);

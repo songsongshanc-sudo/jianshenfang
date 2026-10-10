@@ -18,7 +18,7 @@ import { http, type ApiBody } from "../api/http";
 
 const props = defineProps<{
   modelValue: string;
-  biz: "BANNER" | "COVER" | "GUIDE" | "EQUIPMENT" | "EQUIPMENT_VIDEO";
+  biz: "BANNER" | "COVER" | "GUIDE" | "EQUIPMENT" | "EQUIPMENT_VIDEO" | "COACH" | "CERT" | "PACK" | "RICH";
   accept?: string;
   placeholder?: string;
 }>();

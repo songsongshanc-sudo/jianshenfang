@@ -13,6 +13,11 @@ export interface CreatedOrder {
   amountFen: number;
   status: string;
   mockPay: boolean;
+  timeStamp?: string;
+  nonceStr?: string;
+  payPackage?: string;
+  signType?: string;
+  paySign?: string;
 }
 
 export interface OrderRow {
@@ -57,6 +62,41 @@ export function myOrders() {
 
 export function cancelOrder(orderId: string) {
   return request<OrderRow>({ url: `/api/mp/orders/${orderId}/cancel`, method: "POST" });
+}
+
+export function requestWxPay(created: CreatedOrder): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (!created.timeStamp || !created.nonceStr || !created.payPackage || !created.paySign) {
+      reject(new Error("支付参数不完整"));
+      return;
+    }
+    uni.requestPayment({
+      provider: "wxpay",
+      orderInfo: {},
+      timeStamp: created.timeStamp,
+      nonceStr: created.nonceStr,
+      package: created.payPackage,
+      signType: created.signType || "RSA",
+      paySign: created.paySign,
+      success: () => resolve(),
+      fail: (err) => reject(err),
+    });
+  });
+}
+
+export async function waitUntilPaid(orderId: string, tries = 12): Promise<OrderRow> {
+  let last: OrderRow | null = null;
+  for (let i = 0; i < tries; i++) {
+    last = await orderDetail(orderId);
+    if (last.status === "PAID") {
+      return last;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  if (!last) {
+    throw new Error("查询订单失败");
+  }
+  return last;
 }
 
 export function orderStatusText(status: string) {

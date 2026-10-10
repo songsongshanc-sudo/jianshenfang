@@ -44,15 +44,15 @@ async function submit() {
 </script>
 <style scoped>
 .page { padding: 24rpx 24rpx 48rpx; }
-.hero { padding: 36rpx 32rpx; border-radius: 32rpx; background: #1c1917; color: #fff; }
+.hero { padding: 36rpx 32rpx; border-radius: 20rpx; background: #1f2937; color: #fff; }
 .title { display: block; font-size: 44rpx; font-weight: 700; }
-.text { display: block; margin-top: 12rpx; color: #d6d3d1; font-size: 26rpx; line-height: 1.6; }
+.text { display: block; margin-top: 12rpx; color: #d1d5db; font-size: 26rpx; line-height: 1.6; }
 .hot { display: block; margin-top: 20rpx; color: #fdba74; font-size: 28rpx; }
-.brief { margin-top: 20rpx; padding: 24rpx; border-radius: 24rpx; background: #fff; }
-.brief .text { color: #44403c; }
-.form { margin-top: 20rpx; padding: 28rpx; border-radius: 28rpx; background: #fff; }
+.brief { margin-top: 16rpx; padding: 24rpx; border-radius: 20rpx; background: #fff; border: 1px solid #eceff3; }
+.brief .text { color: #404040; }
+.form { margin-top: 16rpx; padding: 28rpx; border-radius: 20rpx; background: #fff; border: 1px solid #eceff3; }
 .label { display: block; margin-bottom: 8rpx; font-size: 30rpx; font-weight: 700; }
-input { margin-top: 16rpx; background: #f6f3ee; }
+input { margin-top: 16rpx; height: 88rpx; padding: 0 24rpx; line-height: 88rpx; background: #f5f6f8; }
 .pair { display: flex; gap: 16rpx; }
 .pair input { flex: 1; width: 0; }
 button { margin-top: 24rpx; }

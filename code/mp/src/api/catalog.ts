@@ -111,6 +111,10 @@ export function me(storeId?: string) {
   return request<MeProfile>({ url: `/api/mp/me${suffix}` });
 }
 
+export function updateProfile(nickname: string) {
+  return request<MeProfile>({ url: "/api/mp/me", method: "PUT", data: { nickname } });
+}
+
 export function yuan(fen: number) {
   const value = fen / 100;
   return Number.isInteger(value) ? `¥${value}` : `¥${value.toFixed(2)}`;

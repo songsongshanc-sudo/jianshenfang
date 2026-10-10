@@ -64,14 +64,14 @@ function openCard(item: CardItem) {
 <style scoped>
 .page { padding: 24rpx 24rpx 48rpx; }
 .title { display: block; font-size: 40rpx; font-weight: 700; }
-.sub { display: block; margin: 8rpx 0 20rpx; color: #78716c; font-size: 26rpx; }
-.empty { padding: 48rpx 24rpx; border-radius: 24rpx; background: #fff; color: #78716c; text-align: center; }
-.sku { margin-bottom: 16rpx; padding: 28rpx; border-radius: 24rpx; background: #fff; }
-.sku.gray { background: #f5f5f4; color: #78716c; }
+.sub { display: block; margin: 8rpx 0 20rpx; color: #8a8f98; font-size: 26rpx; }
+.empty { padding: 48rpx 24rpx; border-radius: 20rpx; background: #fff; color: #8a8f98; text-align: center; border: 1px solid #eceff3; }
+.sku { margin-bottom: 16rpx; padding: 28rpx; border-radius: 20rpx; background: #fff; border: 1px solid #eceff3; }
+.sku.gray { background: #fafafa; color: #8a8f98; }
 .row { display: flex; justify-content: space-between; align-items: center; }
 .name { font-size: 32rpx; font-weight: 700; }
-.price { font-size: 36rpx; font-weight: 700; color: #c2410c; }
-.sku.gray .price { color: #78716c; }
-.meta, .lock, .left { display: block; margin-top: 8rpx; color: #78716c; font-size: 24rpx; }
-.left { color: #c2410c; }
+.price { font-size: 36rpx; font-weight: 700; color: #ea580c; }
+.sku.gray .price { color: #8a8f98; }
+.meta, .lock, .left { display: block; margin-top: 8rpx; color: #8a8f98; font-size: 24rpx; }
+.left { color: #ea580c; }
 </style>

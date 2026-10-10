@@ -59,7 +59,7 @@ function call(phone: string) {
 .sheet {
   width: 100%;
   background: #fff;
-  border-radius: 28rpx 28rpx 0 0;
+  border-radius: 24rpx 24rpx 0 0;
   padding: 32rpx 32rpx 48rpx;
   box-sizing: border-box;
 }

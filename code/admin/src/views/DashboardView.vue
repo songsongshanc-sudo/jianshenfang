@@ -1,7 +1,7 @@
 <template>
   <div>
     <h1>今天先从门店开始</h1>
-    <p class="lead">{{ session.role === "MASTER" ? "总账号可以配置全部门店、内容和协议。" : "门店账号可以设置本店电话、指引和卡种。" }}</p>
+    <p class="lead">{{ session.role === "MASTER" ? "总账号可以配置全部门店、内容和协议。" : "门店账号可以设置本店 WiFi、电话、指引和卡种。" }}</p>
     <div class="stats">
       <div class="stat">
         <span>可见门店</span>

@@ -117,7 +117,7 @@ export function coachMe() {
 }
 
 export function myLessons() {
-  return request<Array<{ pack_id: string; name: string; remaining: number }>>({ url: "/api/mp/lessons", method: "GET" });
+  return request<Array<{ pack_id: string; name: string; remaining: number; content: string | null; cover_url: string | null }>>({ url: "/api/mp/lessons", method: "GET" });
 }
 
 export function lessonQr(packId: string) {

@@ -507,7 +507,7 @@ public class ShopService implements CourseGrant {
 
     public List<Map<String, Object>> myLessons(long userId) {
         List<Map<String, Object>> rows = jdbc.queryForList("""
-                SELECT a.pack_id, a.remaining, p.name
+                SELECT a.pack_id, a.remaining, p.name, p.content, p.cover_url
                 FROM lesson_account a JOIN course_pack p ON p.id = a.pack_id
                 WHERE a.user_id = ? ORDER BY a.id
                 """, userId);

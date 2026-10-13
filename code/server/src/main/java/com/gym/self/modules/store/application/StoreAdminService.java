@@ -116,6 +116,14 @@ public class StoreAdminService {
         storeMapper.updateById(store);
     }
 
+    public void updateWifi(AdminPrincipal actor, long storeId, String wifiSsid, String wifiPassword) {
+        Store store = writable(actor, storeId);
+        store.setWifiSsid(blankToNull(wifiSsid));
+        store.setWifiPassword(blankToNull(wifiPassword));
+        store.setUpdatedAt(LocalDateTime.now());
+        storeMapper.updateById(store);
+    }
+
     public List<PhoneView> phones(AdminPrincipal actor, long storeId) {
         visible(actor, storeId);
         return storePhoneMapper.selectList(new LambdaQueryWrapper<StorePhone>()

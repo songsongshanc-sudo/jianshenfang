@@ -84,6 +84,20 @@ class StoreCatalogTest {
                                 """))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value(40300));
+        mockMvc.perform(put("/api/admin/stores/" + hebei + "/wifi")
+                        .header("Authorization", "Bearer " + clerk)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"wifiSsid\":\"store-wifi\",\"wifiPassword\":\"store-wifi-pwd\"}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/admin/stores").header("Authorization", "Bearer " + clerk))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].wifiSsid").value("store-wifi"))
+                .andExpect(jsonPath("$.data[0].wifiPassword").value("store-wifi-pwd"));
+        mockMvc.perform(put("/api/admin/stores/" + shanghai + "/wifi")
+                        .header("Authorization", "Bearer " + clerk)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"wifiSsid\":\"other\",\"wifiPassword\":\"x\"}"))
+                .andExpect(status().isForbidden());
 
         MvcResult listed = mockMvc.perform(get("/api/mp/stores")
                         .param("province", "河北省")

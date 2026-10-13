@@ -88,6 +88,8 @@ public class MpAuthService {
         GymUser phoneUser = userMapper.selectOne(new LambdaQueryWrapper<GymUser>().eq(GymUser::getPhone, phone));
         GymUser user = merge(sessionUser, phoneUser, phone);
         if ("ACTIVE".equals(user.getRegisterStatus())) {
+            user.setUpdatedAt(LocalDateTime.now());
+            userMapper.updateById(user);
             return formal(user);
         }
         user.setPhone(phone);

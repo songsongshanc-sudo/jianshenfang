@@ -59,6 +59,12 @@ public class StoreAdminController {
         return ApiResponse.ok(null);
     }
 
+    @PutMapping("/{id}/wifi")
+    public ApiResponse<Void> updateWifi(@PathVariable String id, @Valid @RequestBody UpdateWifiRequest request) {
+        storeAdminService.updateWifi(CurrentAdmin.get(), parseId(id), request.wifiSsid(), request.wifiPassword());
+        return ApiResponse.ok(null);
+    }
+
     @GetMapping("/{id}/phones")
     public ApiResponse<List<StoreAdminService.PhoneView>> phones(@PathVariable String id) {
         return ApiResponse.ok(storeAdminService.phones(CurrentAdmin.get(), parseId(id)));
@@ -114,6 +120,11 @@ public class StoreAdminController {
             @Size(max = 512) String coverUrl,
             @Size(max = 32) String businessHours,
             @NotBlank String status,
+            @Size(max = 64) String wifiSsid,
+            @Size(max = 64) String wifiPassword) {
+    }
+
+    public record UpdateWifiRequest(
             @Size(max = 64) String wifiSsid,
             @Size(max = 64) String wifiPassword) {
     }

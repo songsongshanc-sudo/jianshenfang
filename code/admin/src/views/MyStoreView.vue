@@ -1,14 +1,20 @@
 <template>
   <div>
     <h1>本店档案</h1>
-    <p class="lead">营业信息由总账号维护。本店可以自己设置电话和到店指引。</p>
+    <p class="lead">名称、地址、营业状态由总账号维护。本店可以自己设置 WiFi、电话和到店指引。</p>
     <el-descriptions v-if="store" :column="1" border>
       <el-descriptions-item label="编号">{{ store.code }}</el-descriptions-item>
       <el-descriptions-item label="名称">{{ store.name }}</el-descriptions-item>
       <el-descriptions-item label="地址">{{ store.province }} {{ store.city }} {{ store.address }}</el-descriptions-item>
       <el-descriptions-item label="营业状态">{{ store.status === "OPEN" ? "营业" : "停业" }}</el-descriptions-item>
-      <el-descriptions-item label="WiFi">{{ store.wifiSsid || "未配置" }} / {{ store.wifiPassword || "未配置" }}</el-descriptions-item>
     </el-descriptions>
+
+    <h3>本店 WiFi</h3>
+    <p class="hint">小程序里注册完成的用户可查看账号和密码。留空表示未配置。</p>
+    <el-form label-width="90px" class="wifi-form">
+      <el-form-item label="WiFi 账号"><el-input v-model="wifiSsid" maxlength="64" placeholder="SSID" /></el-form-item>
+      <el-form-item label="WiFi 密码"><el-input v-model="wifiPassword" maxlength="64" placeholder="可留空" show-password /></el-form-item>
+    </el-form>
 
     <h3>分时段电话</h3>
     <p class="hint">白班、夜班必须填写时段。夜班可以跨过 0 点，例如 21:30 到 09:00。</p>
@@ -37,7 +43,7 @@
     </div>
     <el-button @click="guides.push({ imageUrl: '', caption: '' })">添加步骤</el-button>
     <div class="actions">
-      <el-button type="primary" :disabled="!store" @click="save">保存电话和指引</el-button>
+      <el-button type="primary" :disabled="!store" @click="save">保存 WiFi、电话和指引</el-button>
     </div>
     <ContentPreview ref="preview" />
   </div>
@@ -76,6 +82,8 @@ interface GuideRow {
 
 const preview = ref<InstanceType<typeof ContentPreview>>();
 const store = ref<StoreRow | null>(null);
+const wifiSsid = ref("");
+const wifiPassword = ref("");
 const phones = ref<PhoneRow[]>([]);
 const guides = ref<GuideRow[]>([]);
 
@@ -85,6 +93,8 @@ onMounted(async () => {
   if (!store.value) {
     return;
   }
+  wifiSsid.value = store.value.wifiSsid || "";
+  wifiPassword.value = store.value.wifiPassword || "";
   const phoneRes = await http.get<ApiBody<PhoneRow[]>>(`/api/admin/stores/${store.value.id}/phones`);
   phones.value = phoneRes.data.data.map((item) => ({
     phoneType: item.phoneType,
@@ -107,12 +117,18 @@ async function save() {
   if (!store.value) {
     return;
   }
+  await http.put(`/api/admin/stores/${store.value.id}/wifi`, {
+    wifiSsid: wifiSsid.value,
+    wifiPassword: wifiPassword.value
+  });
   await http.put(`/api/admin/stores/${store.value.id}/phones`, {
     items: phones.value.map((item, index) => ({ ...item, sortNo: index }))
   });
   await http.put(`/api/admin/stores/${store.value.id}/guides`, {
     items: guides.value.map((item, index) => ({ ...item, sortNo: index }))
   });
+  store.value.wifiSsid = wifiSsid.value || null;
+  store.value.wifiPassword = wifiPassword.value || null;
   ElMessage.success("已保存");
 }
 </script>
@@ -133,5 +149,13 @@ h3 {
 }
 .actions {
   margin-top: 16px;
+}
+.lead,
+.hint {
+  color: #606266;
+  font-size: 13px;
+}
+.wifi-form {
+  max-width: 480px;
 }
 </style>

@@ -6,3 +6,17 @@ declare module '*.vue' {
   const component: DefineComponent<{}, {}, any>
   export default component
 }
+
+declare module 'uqrcodejs' {
+  interface UQRCode {
+    data: string
+    size: number
+    modules: Array<Array<{ isBlack: boolean }>>
+    make(): void
+    getDrawModules(): Array<Record<string, unknown>>
+  }
+  const UQRCode: {
+    new (): UQRCode
+  }
+  export default UQRCode
+}

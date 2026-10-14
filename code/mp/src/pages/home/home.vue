@@ -25,6 +25,31 @@
       </view>
     </view>
 
+    <view v-if="visitMine?.status === 'IN_STORE'" class="visit-bar" :class="{ warn: visitWarn }">
+      <view>
+        <text class="visit-title">{{ visitWarn ? "即将超时，请尽快离店" : "参观进行中" }}</text>
+        <text class="visit-sub">剩余 {{ visitRemainText }}{{ visitMine.storeName ? ` · ${visitMine.storeName}` : "" }}</text>
+      </view>
+      <text class="visit-tip">再次刷脸离店</text>
+    </view>
+    <view v-else-if="visitMine?.status === 'UNUSED'" class="visit-bar idle">
+      <view>
+        <text class="visit-title">参观卡待使用</text>
+        <text class="visit-sub">{{ visitMine.storeName ? `${visitMine.storeName} · ` : "" }}有效期至 {{ formatVisitTime(visitMine.validUntil) }}</text>
+      </view>
+      <view class="visit-actions">
+        <text class="visit-link" @click="refundVisitCard">退款</text>
+      </view>
+    </view>
+    <view v-else-if="visitMine?.status === 'REFUND_PENDING'" class="visit-bar idle">
+      <text class="visit-title">退款处理中</text>
+      <text class="visit-sub">{{ visitMine.refundError || "稍后自动重试" }}</text>
+    </view>
+    <view v-else-if="visitMine?.status === 'TIMEOUT_FORFEIT'" class="visit-bar warn">
+      <text class="visit-title">已超时，押金已扣除</text>
+      <text class="visit-sub">请刷脸离店</text>
+    </view>
+
     <view v-if="noticeList.length" class="notice">
       <text class="notice-tag">公告</text>
       <swiper
@@ -59,6 +84,14 @@
         </view>
       </view>
       <text class="groupon-more">去核销 ›</text>
+    </view>
+
+    <view v-if="visitCanBuy" class="visit-entry" @click="goVisit">
+      <view>
+        <text class="visit-entry-title">到店参观</text>
+        <text class="visit-entry-sub">押金 ¥{{ yuan(visitDepositFen) }} · 可逛 {{ visitDuration }} 分钟</text>
+      </view>
+      <text class="visit-entry-more">去看看 ›</text>
     </view>
 
     <view class="actions">
@@ -133,7 +166,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onUnmounted, ref } from "vue";
 import { onShow } from "@dcloudio/uni-app";
 import { storeToRefs } from "pinia";
 import ContactSheet from "../../components/ContactSheet.vue";
@@ -155,6 +188,7 @@ import {
   type PublicStore,
 } from "../../api/catalog";
 import { redeemGroupon } from "../../api/shop";
+import { refundVisit, visitOffer, type MyVisit } from "../../api/visit";
 import { useCurrentStore } from "../../stores/currentStore";
 
 const current = useCurrentStore();
@@ -173,8 +207,22 @@ const platformLabels = ["美团", "抖音"];
 const platformIndex = ref(0);
 const code = ref("");
 const location = ref<{ longitude: number; latitude: number } | null>(null);
+const visitMine = ref<MyVisit | null>(null);
+const visitCanBuy = ref(false);
+const visitDepositFen = ref(0);
+const visitDuration = ref(60);
+const visitRemainMs = ref(0);
+const visitWarned = ref(false);
+let visitTimer = 0;
 
 const userInitial = computed(() => (profile.value?.nickname || (profile.value ? "会" : "用")).slice(0, 1));
+const visitWarn = computed(() => visitMine.value?.status === "IN_STORE" && (visitMine.value.warn || visitRemainMs.value <= (visitMine.value.warnMinutes || 5) * 60_000));
+const visitRemainText = computed(() => {
+  const total = Math.max(0, Math.floor(visitRemainMs.value / 1000));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+});
 
 function statusNeedStore() {
   if (storeId.value) return true;
@@ -237,8 +285,10 @@ async function load() {
     } catch {
       profile.value = null;
     }
+    await loadVisit();
   } else {
     profile.value = null;
+    clearVisit();
   }
   if (!storeId.value) {
     store.value = null;
@@ -254,9 +304,83 @@ async function load() {
   }
 }
 
+async function loadVisit() {
+  try {
+    const offer = await visitOffer(storeId.value || undefined);
+    visitMine.value = offer.mine;
+    visitCanBuy.value = offer.canBuy;
+    visitDepositFen.value = offer.config.depositFen;
+    visitDuration.value = offer.config.durationMinutes;
+    visitRemainMs.value = offer.mine?.remainMs || 0;
+    startVisitTimer();
+    if (visitWarn.value && !visitWarned.value) {
+      visitWarned.value = true;
+      uni.showToast({ title: "参观即将超时，请尽快离店", icon: "none" });
+    }
+  } catch {
+    clearVisit();
+  }
+}
+
+function clearVisit() {
+  visitMine.value = null;
+  visitCanBuy.value = false;
+  visitRemainMs.value = 0;
+  visitWarned.value = false;
+  if (visitTimer) {
+    clearInterval(visitTimer);
+    visitTimer = 0;
+  }
+}
+
+function startVisitTimer() {
+  if (visitTimer) {
+    clearInterval(visitTimer);
+    visitTimer = 0;
+  }
+  if (visitMine.value?.status !== "IN_STORE") {
+    return;
+  }
+  visitTimer = setInterval(() => {
+    visitRemainMs.value = Math.max(0, visitRemainMs.value - 1000);
+    if (visitWarn.value && !visitWarned.value) {
+      visitWarned.value = true;
+      uni.showToast({ title: "参观即将超时，请尽快离店", icon: "none" });
+    }
+  }, 1000) as unknown as number;
+}
+
+function formatVisitTime(value: string | null) {
+  if (!value) return "-";
+  return value.replace("T", " ").slice(0, 16);
+}
+
+function goVisit() {
+  if (!statusNeedStore()) return;
+  if (uni.getStorageSync("mpTokenType") !== "ACCESS") {
+    uni.navigateTo({ url: "/pages/login/login" });
+    return;
+  }
+  uni.navigateTo({ url: "/package-card/pages/visit/visit" });
+}
+
+async function refundVisitCard() {
+  try {
+    await refundVisit();
+    uni.showToast({ title: "已申请退款", icon: "none" });
+    await loadVisit();
+  } catch {
+    /* http 已提示 */
+  }
+}
+
 function goSwitch() {
   uni.navigateTo({ url: "/package-store/pages/switch/switch" });
 }
+
+onUnmounted(() => {
+  if (visitTimer) clearInterval(visitTimer);
+});
 
 function goMineOrLogin() {
   if (profile.value) {
@@ -462,6 +586,39 @@ onShow(async () => {
   from { transform: translateX(0); }
   to { transform: translateX(-50%); }
 }
+.visit-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  margin-top: 16rpx;
+  padding: 22rpx 24rpx;
+  border-radius: 20rpx;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+}
+.visit-bar.warn { background: #fff1f2; border-color: #fecdd3; }
+.visit-bar.idle { background: #fff7ed; border-color: #fed7aa; }
+.visit-title { display: block; font-size: 28rpx; font-weight: 700; }
+.visit-sub { display: block; margin-top: 6rpx; color: #6b7280; font-size: 22rpx; }
+.visit-tip { color: #059669; font-size: 22rpx; font-weight: 600; flex-shrink: 0; }
+.visit-bar.warn .visit-tip, .visit-bar.warn .visit-title { color: #e11d48; }
+.visit-link { color: #ea580c; font-size: 24rpx; font-weight: 700; }
+.visit-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  margin-top: 16rpx;
+  padding: 22rpx 24rpx;
+  border-radius: 20rpx;
+  background: #fff;
+  border: 1px solid #eceff3;
+  border-left: 8rpx solid #f97316;
+}
+.visit-entry-title { display: block; font-size: 30rpx; font-weight: 700; }
+.visit-entry-sub { display: block; margin-top: 4rpx; color: #8a8f98; font-size: 22rpx; }
+.visit-entry-more { color: #ea580c; font-size: 24rpx; font-weight: 600; flex-shrink: 0; }
 .groupon {
   display: flex;
   align-items: center;

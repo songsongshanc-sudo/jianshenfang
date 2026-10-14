@@ -15,6 +15,8 @@ import com.gym.self.modules.user.domain.GymUser;
 import com.gym.self.modules.user.domain.GymUserMapper;
 import com.gym.self.modules.user.domain.UserFace;
 import com.gym.self.modules.user.domain.UserFaceMapper;
+import com.gym.self.modules.visit.application.VisitService;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,13 +45,15 @@ public class GateService {
     private final GateState gateState;
     private final GateSyncTaskMapper taskMapper;
     private final GateFaceSync gateFaceSync;
+    private final ObjectProvider<VisitService> visitService;
     private final Snowflake snowflake;
     private final TimeProvider timeProvider;
 
     public GateService(GateDeviceMapper gateDeviceMapper, DoorLogMapper doorLogMapper, GymUserMapper userMapper,
                        UserFaceMapper userFaceMapper, MembershipMapper membershipMapper, StoreMapper storeMapper,
                        AppConfigMapper appConfigMapper, GateState gateState, GateSyncTaskMapper taskMapper,
-                       GateFaceSync gateFaceSync, Snowflake snowflake, TimeProvider timeProvider) {
+                       GateFaceSync gateFaceSync, ObjectProvider<VisitService> visitService, Snowflake snowflake,
+                       TimeProvider timeProvider) {
         this.gateDeviceMapper = gateDeviceMapper;
         this.doorLogMapper = doorLogMapper;
         this.userMapper = userMapper;
@@ -60,6 +64,7 @@ public class GateService {
         this.gateState = gateState;
         this.taskMapper = taskMapper;
         this.gateFaceSync = gateFaceSync;
+        this.visitService = visitService;
         this.snowflake = snowflake;
         this.timeProvider = timeProvider;
     }
@@ -294,6 +299,20 @@ public class GateService {
         }
         LocalDateTime now = timeProvider.now();
         Membership pass = activePass(user.getId(), device.getStoreId(), now);
+        VisitService visits = visitService.getIfAvailable();
+        if (pass == null && visits != null && visits.rejectOtherStoreVisit(user.getId(), device.getStoreId())) {
+            log(user.getId(), device, null, "REJECTED", now);
+            return new VerifyResult(false, "非本店会员");
+        }
+        if (pass == null && visits != null && visits.canOpenByVisit(user.getId(), device.getStoreId())) {
+            int window = debounceSeconds();
+            if (gateState.withinDebounce(user.getId(), device.getDeviceSn(), Duration.ofSeconds(window))) {
+                return new VerifyResult(true, "开门");
+            }
+            log(user.getId(), device, null, "SUCCESS", now);
+            visits.onGateSuccess(user.getId(), device.getStoreId());
+            return new VerifyResult(true, "开门");
+        }
         if (pass == null) {
             log(user.getId(), device, null, "REJECTED", now);
             Membership any = anyOtherStore(user.getId(), device.getStoreId(), now);
@@ -439,6 +458,19 @@ public class GateService {
         }
         LocalDateTime now = timeProvider.now();
         Membership pass = activePass(user.getId(), device.getStoreId(), now);
+        VisitService visits = visitService.getIfAvailable();
+        if (pass == null && visits != null && visits.rejectOtherStoreVisit(user.getId(), device.getStoreId())) {
+            log(user.getId(), device, null, "REJECTED", now, recogTime, 1, memberKey);
+            return Outcome.OTHER_STORE;
+        }
+        if (pass == null && visits != null && visits.canOpenByVisit(user.getId(), device.getStoreId())) {
+            if (gateState.withinDebounce(user.getId(), device.getDeviceSn(), Duration.ofSeconds(debounceSeconds()))) {
+                return Outcome.OPEN;
+            }
+            log(user.getId(), device, null, "SUCCESS", now, recogTime, 0, user.getMemberNo());
+            visits.onGateSuccess(user.getId(), device.getStoreId());
+            return Outcome.OPEN;
+        }
         if (pass == null) {
             log(user.getId(), device, null, "REJECTED", now, recogTime, 1, memberKey);
             return anyOtherStore(user.getId(), device.getStoreId(), now) == null ? Outcome.EXPIRED : Outcome.OTHER_STORE;

@@ -12,8 +12,10 @@ import com.gym.self.modules.user.domain.GymUser;
 import com.gym.self.modules.user.domain.GymUserMapper;
 import com.gym.self.modules.user.domain.UserFace;
 import com.gym.self.modules.user.domain.UserFaceMapper;
+import com.gym.self.modules.visit.application.VisitService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -48,12 +50,13 @@ public class GateFaceSync {
     private final Snowflake snowflake;
     private final TimeProvider timeProvider;
     private final Executor gateExecutor;
+    private final ObjectProvider<VisitService> visitService;
     private final ConcurrentHashMap<String, Object> locks = new ConcurrentHashMap<>();
 
     public GateFaceSync(GateDeviceMapper gateDeviceMapper, GateSyncTaskMapper taskMapper, MembershipMapper membershipMapper,
                         GymUserMapper userMapper, UserFaceMapper userFaceMapper, FaceFileService faceFileService,
                         WsGateCommandPort port, Snowflake snowflake, TimeProvider timeProvider,
-                        @Qualifier("gateExecutor") Executor gateExecutor) {
+                        @Qualifier("gateExecutor") Executor gateExecutor, ObjectProvider<VisitService> visitService) {
         this.gateDeviceMapper = gateDeviceMapper;
         this.taskMapper = taskMapper;
         this.membershipMapper = membershipMapper;
@@ -64,6 +67,16 @@ public class GateFaceSync {
         this.snowflake = snowflake;
         this.timeProvider = timeProvider;
         this.gateExecutor = gateExecutor;
+        this.visitService = visitService;
+    }
+
+    @Transactional
+    public void onVisitChanged(long userId, long storeId) {
+        List<GateDevice> devices = enabled(storeId);
+        for (GateDevice device : devices) {
+            enqueue(userId, device.getId());
+        }
+        afterCommit(() -> gateExecutor.execute(() -> flushStore(storeId)));
     }
 
     @Transactional
@@ -317,11 +330,23 @@ public class GateFaceSync {
     private LocalDateTime validUntil(long userId, long storeId) {
         List<Membership> rows = membershipMapper.selectList(new LambdaQueryWrapper<Membership>()
                 .eq(Membership::getUserId, userId)
-                .eq(Membership::getStoreId, storeId)
+                .and(w -> w.eq(Membership::getStoreId, storeId).or().eq(Membership::getCrossStore, 1))
                 .ne(Membership::getStatus, "REVOKED")
                 .gt(Membership::getEndAt, timeProvider.now()));
-        return rows.stream().map(Membership::getEndAt).filter(Objects::nonNull).max(LocalDateTime::compareTo)
-                .orElseGet(() -> timeProvider.now().minusMinutes(1));
+        LocalDateTime membershipEnd = rows.stream().map(Membership::getEndAt).filter(Objects::nonNull)
+                .max(LocalDateTime::compareTo).orElse(null);
+        VisitService visits = visitService.getIfAvailable();
+        LocalDateTime visitEnd = visits == null ? null : visits.accessUntil(userId, storeId);
+        if (membershipEnd == null && visitEnd == null) {
+            return timeProvider.now().minusMinutes(1);
+        }
+        if (membershipEnd == null) {
+            return visitEnd;
+        }
+        if (visitEnd == null) {
+            return membershipEnd;
+        }
+        return membershipEnd.isAfter(visitEnd) ? membershipEnd : visitEnd;
     }
 
     private void enqueue(long userId, long deviceId) {

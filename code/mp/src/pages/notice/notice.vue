@@ -9,6 +9,7 @@
 import { ref } from "vue";
 import { onLoad } from "@dcloudio/uni-app";
 import { notices } from "../../api/catalog";
+import { fitRichHtml } from "../../utils/richHtml";
 
 const html = ref("");
 
@@ -18,7 +19,7 @@ onLoad(async (query) => {
   try {
     const list = await notices();
     const hit = list.find((item) => item.id === id);
-    html.value = hit?.content || "";
+    html.value = fitRichHtml(hit?.content || "");
     if (html.value) {
       uni.setNavigationBarTitle({ title: "公告详情" });
     }
@@ -32,6 +33,9 @@ onLoad(async (query) => {
 .page { padding: 24rpx 24rpx 48rpx; }
 .content {
   display: block;
+  width: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
   padding: 28rpx;
   border-radius: 20rpx;
   background: #fff;

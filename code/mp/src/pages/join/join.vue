@@ -5,12 +5,12 @@
       <text v-if="page.hotline" class="hot">咨询热线 {{ page.hotline }}</text>
     </view>
     <view class="brief">
-      <rich-text v-if="page.intro" :nodes="page.intro" />
+      <rich-text v-if="page.intro" :nodes="introHtml" />
       <text v-else class="text">留下联系方式，顾问会和你沟通选址与投入。</text>
     </view>
-    <view v-if="page.points" class="brief"><rich-text :nodes="page.points" /></view>
-    <view v-if="page.support" class="brief"><rich-text :nodes="page.support" /></view>
-    <view v-if="page.steps" class="brief"><rich-text :nodes="page.steps" /></view>
+    <view v-if="page.points" class="brief"><rich-text :nodes="pointsHtml" /></view>
+    <view v-if="page.support" class="brief"><rich-text :nodes="supportHtml" /></view>
+    <view v-if="page.steps" class="brief"><rich-text :nodes="stepsHtml" /></view>
     <view class="form">
       <text class="label">合作申请</text>
       <input v-model="form.name" placeholder="姓名" />
@@ -25,11 +25,18 @@
   </view>
 </template>
 <script setup lang="ts">
-import { reactive, ref } from "vue";
+import { computed, reactive, ref } from "vue";
 import { onShow } from "@dcloudio/uni-app";
 import { franchiseLead, franchisePage } from "../../api/shop";
+import { fitRichHtml } from "../../utils/richHtml";
+
 const page = ref({ intro: "", hotline: "", points: "", support: "", steps: "" });
 const form = reactive({ name: "", phone: "", budget: "", province: "", city: "" });
+const introHtml = computed(() => fitRichHtml(page.value.intro));
+const pointsHtml = computed(() => fitRichHtml(page.value.points));
+const supportHtml = computed(() => fitRichHtml(page.value.support));
+const stepsHtml = computed(() => fitRichHtml(page.value.steps));
+
 onShow(async () => {
   try {
     page.value = await franchisePage();
@@ -48,7 +55,16 @@ async function submit() {
 .title { display: block; font-size: 44rpx; font-weight: 700; }
 .text { display: block; margin-top: 12rpx; color: #d1d5db; font-size: 26rpx; line-height: 1.6; }
 .hot { display: block; margin-top: 20rpx; color: #fdba74; font-size: 28rpx; }
-.brief { margin-top: 16rpx; padding: 24rpx; border-radius: 20rpx; background: #fff; border: 1px solid #eceff3; }
+.brief {
+  margin-top: 16rpx;
+  padding: 24rpx;
+  border-radius: 20rpx;
+  background: #fff;
+  border: 1px solid #eceff3;
+  overflow: hidden;
+  width: 100%;
+  box-sizing: border-box;
+}
 .brief .text { color: #404040; }
 .form { margin-top: 16rpx; padding: 28rpx; border-radius: 20rpx; background: #fff; border: 1px solid #eceff3; }
 .label { display: block; margin-bottom: 8rpx; font-size: 30rpx; font-weight: 700; }

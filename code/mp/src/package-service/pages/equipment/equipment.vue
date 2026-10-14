@@ -4,7 +4,7 @@
     <button @click="lookup">查看教程</button>
     <view v-if="detail" class="card">
       <text class="name">{{ detail.name }}</text>
-      <rich-text v-if="detail.intro" class="meta" :nodes="detail.intro" />
+      <rich-text v-if="detail.intro" class="meta" :nodes="introHtml" />
       <image v-if="showLegacyImage" class="photo" :src="detail.image_url" mode="widthFix" />
       <video v-if="detail.video_url" :src="detail.video_url" controls />
     </view>
@@ -19,11 +19,13 @@ import { computed, ref } from "vue";
 import { onLoad } from "@dcloudio/uni-app";
 import { equipmentByCode, equipmentList } from "../../../api/shop";
 import { useCurrentStore } from "../../../stores/currentStore";
+import { fitRichHtml } from "../../../utils/richHtml";
 const current = useCurrentStore();
 const code = ref("");
 const rows = ref<Array<{ id: string; code: string; name: string; intro: string; image_url: string; video_url: string }>>([]);
 const detail = ref<{ name: string; intro: string; image_url: string; video_url: string } | null>(null);
 const queryStoreId = ref("");
+const introHtml = computed(() => fitRichHtml(detail.value?.intro));
 onLoad(async (query) => {
   queryStoreId.value = String(query?.storeId || "");
   if (query?.code) code.value = String(query.code);
@@ -42,9 +44,17 @@ function open(value: string) { code.value = value; lookup(); }
 </script>
 <style scoped>
 .page { padding: 24rpx 24rpx 48rpx; }
-.card { margin-top: 16rpx; padding: 24rpx; border-radius: 20rpx; background: #fff; border: 1px solid #eceff3; }
+.card {
+  margin-top: 16rpx;
+  padding: 24rpx;
+  border-radius: 20rpx;
+  background: #fff;
+  border: 1px solid #eceff3;
+  overflow: hidden;
+  box-sizing: border-box;
+}
 .name { font-weight: 700; }
-.meta { display: block; margin-top: 8rpx; color: #78716c; }
+.meta { display: block; width: 100%; overflow: hidden; margin-top: 8rpx; color: #78716c; }
 input { height: 88rpx; padding: 0 24rpx; line-height: 88rpx; background: #fff; }
 button { margin-top: 16rpx; }
 .photo, video { width: 100%; margin-top: 16rpx; border-radius: 16rpx; }

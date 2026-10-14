@@ -24,6 +24,7 @@ final class PublicObjectNaming {
             case "GUIDE" -> "guide";
             case "EQUIPMENT", "EQUIPMENT_VIDEO" -> "equipment";
             case "RICH" -> "rich";
+            case "SERVICE_GUIDE" -> "service-guide";
             case "COACH", "CERT" -> "coach";
             case "PACK" -> "pack";
             default -> throw BizException.badRequest("不支持该图片用途");

@@ -8,6 +8,7 @@
 
 <script setup lang="ts">
 import { ref } from "vue";
+import { fitRichHtml } from "../richHtml";
 
 const visible = ref(false);
 const title = ref("预览");
@@ -17,7 +18,7 @@ const video = ref("");
 
 function show(payload: { title?: string; html?: string; image?: string; video?: string }) {
   title.value = payload.title || "预览";
-  html.value = payload.html || "";
+  html.value = fitRichHtml(payload.html || "");
   image.value = payload.image || "";
   video.value = payload.video || "";
   visible.value = true;
@@ -27,8 +28,8 @@ defineExpose({ show });
 </script>
 
 <style scoped>
-.html { line-height: 1.7; word-break: break-word; }
+.html { line-height: 1.7; word-break: break-word; overflow: hidden; }
 .html :deep(img),
-.media { max-width: 100%; height: auto; display: block; }
+.media { max-width: 100%; width: 100%; height: auto; display: block; }
 .media { margin-top: 8px; }
 </style>

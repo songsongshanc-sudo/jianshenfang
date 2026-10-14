@@ -104,6 +104,34 @@ public class ContentAdminController {
         return ApiResponse.ok(contentAdminService.publish(CurrentAdmin.get(), parseId(id)));
     }
 
+    @GetMapping("/service-guides")
+    public ApiResponse<List<ContentAdminService.ServiceGuideView>> serviceGuides() {
+        return ApiResponse.ok(contentAdminService.serviceGuides(CurrentAdmin.get()));
+    }
+
+    @PostMapping("/service-guides")
+    public ApiResponse<ContentAdminService.ServiceGuideView> createServiceGuideDraft() {
+        return ApiResponse.ok(contentAdminService.createServiceGuideDraft(CurrentAdmin.get()));
+    }
+
+    @PutMapping("/service-guides/{id}")
+    public ApiResponse<ContentAdminService.ServiceGuideView> updateServiceGuideDraft(
+            @PathVariable String id, @Valid @RequestBody AgreementRequest request) {
+        return ApiResponse.ok(contentAdminService.updateServiceGuideDraft(
+                CurrentAdmin.get(), parseId(id), request.title(), request.content()));
+    }
+
+    @DeleteMapping("/service-guides/{id}")
+    public ApiResponse<Void> deleteServiceGuide(@PathVariable String id) {
+        contentAdminService.deleteServiceGuide(CurrentAdmin.get(), parseId(id));
+        return ApiResponse.ok(null);
+    }
+
+    @PostMapping("/service-guides/{id}/publish")
+    public ApiResponse<ContentAdminService.ServiceGuideView> publishServiceGuide(@PathVariable String id) {
+        return ApiResponse.ok(contentAdminService.publishServiceGuide(CurrentAdmin.get(), parseId(id)));
+    }
+
     @GetMapping("/configs")
     public ApiResponse<ContentAdminService.ConfigView> config() {
         return ApiResponse.ok(contentAdminService.config(CurrentAdmin.get()));

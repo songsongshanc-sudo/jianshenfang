@@ -40,6 +40,8 @@ public class RemotePayGateway implements PayGateway {
     private volatile JsapiServiceExtension jsapi;
     private volatile NotificationParser notificationParser;
     private volatile Signer signer;
+    private volatile RSAAutoCertificateConfig payConfig;
+    private volatile com.wechat.pay.java.service.refund.RefundService refundService;
 
     public RemotePayGateway(
             @Value("${gym.wx.mp-appid:}") String appId,
@@ -134,7 +136,31 @@ public class RemotePayGateway implements PayGateway {
 
     @Override
     public void refund(String orderNo, String transactionId, long amountFen) {
-        throw BizException.rejected("购买后不能退款");
+        ensureConfigured();
+        if (orderNo == null || orderNo.isBlank() || amountFen <= 0) {
+            throw BizException.badRequest("退款参数不正确");
+        }
+        ensureClient();
+        try {
+            com.wechat.pay.java.service.refund.model.CreateRequest request =
+                    new com.wechat.pay.java.service.refund.model.CreateRequest();
+            request.setOutTradeNo(orderNo);
+            request.setOutRefundNo("R" + orderNo + System.currentTimeMillis() % 100000);
+            request.setReason("参观押金退回");
+            com.wechat.pay.java.service.refund.model.AmountReq amount =
+                    new com.wechat.pay.java.service.refund.model.AmountReq();
+            amount.setRefund(amountFen);
+            amount.setTotal(amountFen);
+            amount.setCurrency("CNY");
+            request.setAmount(amount);
+            refundService.create(request);
+        } catch (ServiceException exception) {
+            log.warn("wechat refund failed: {} {}", exception.getErrorCode(), exception.getErrorMessage());
+            throw BizException.rejected("退款失败，请稍后重试");
+        } catch (RuntimeException exception) {
+            log.error("wechat refund error for {}", orderNo, exception);
+            throw BizException.rejected("退款失败，请稍后重试");
+        }
     }
 
     @Override
@@ -200,9 +226,11 @@ public class RemotePayGateway implements PayGateway {
                         .merchantSerialNumber(mchSerial)
                         .apiV3Key(apiV3Key)
                         .build();
+                this.payConfig = built;
                 this.signer = built.createSigner();
                 this.jsapi = new JsapiServiceExtension.Builder().config(built).signType("RSA").build();
                 this.notificationParser = new NotificationParser(built);
+                this.refundService = new com.wechat.pay.java.service.refund.RefundService.Builder().config(built).build();
             } catch (RuntimeException exception) {
                 log.error("wechat pay client init failed", exception);
                 throw BizException.badRequest("微信支付尚未配置");

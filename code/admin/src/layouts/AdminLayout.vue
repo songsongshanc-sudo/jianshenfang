@@ -23,7 +23,9 @@
         <el-menu-item v-if="session.role === 'MASTER'" index="/banners">Banner</el-menu-item>
         <el-menu-item v-if="session.role === 'MASTER'" index="/notices">公告</el-menu-item>
         <el-menu-item v-if="session.role === 'MASTER'" index="/agreements">会员协议</el-menu-item>
+        <el-menu-item v-if="session.role === 'MASTER'" index="/service-guides">会员服务说明</el-menu-item>
         <el-menu-item v-if="session.role === 'MASTER'" index="/configs">系统配置</el-menu-item>
+        <el-menu-item index="/visit">参观卡</el-menu-item>
         <el-menu-item index="/cards">卡种</el-menu-item>
         <el-menu-item index="/coaches">教练与课程</el-menu-item>
         <el-menu-item index="/groupon">团购</el-menu-item>
@@ -76,7 +78,9 @@ const titles: Record<string, string> = {
   "/banners": "Banner",
   "/notices": "公告",
   "/agreements": "会员协议",
+  "/service-guides": "会员服务说明",
   "/configs": "系统配置",
+  "/visit": "参观卡",
   "/cards": "卡种",
   "/coaches": "教练与课程",
   "/groupon": "团购",

@@ -32,4 +32,9 @@ public class MpContentController {
     public ApiResponse<ContentAdminService.AgreementView> currentAgreement() {
         return ApiResponse.ok(contentAdminService.currentAgreement());
     }
+
+    @GetMapping("/service-guides/current")
+    public ApiResponse<ContentAdminService.ServiceGuideView> currentServiceGuide() {
+        return ApiResponse.ok(contentAdminService.currentServiceGuide());
+    }
 }

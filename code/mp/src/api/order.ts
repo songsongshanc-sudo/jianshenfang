@@ -34,6 +34,10 @@ export function currentAgreement() {
   return request<AgreementDoc | null>({ url: "/api/mp/agreements/current" });
 }
 
+export function currentServiceGuide() {
+  return request<AgreementDoc | null>({ url: "/api/mp/service-guides/current" });
+}
+
 export function createOrder(body: {
   storeId: string;
   cardProductId: string;

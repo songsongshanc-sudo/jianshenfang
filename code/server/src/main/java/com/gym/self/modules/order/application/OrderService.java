@@ -25,6 +25,7 @@ import com.gym.self.modules.store.domain.Store;
 import com.gym.self.modules.store.domain.StoreMapper;
 import com.gym.self.modules.user.domain.GymUser;
 import com.gym.self.modules.user.domain.GymUserMapper;
+import com.gym.self.modules.visit.application.VisitService;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -50,13 +51,14 @@ public class OrderService {
     private final TimeProvider timeProvider;
     private final ObjectProvider<CourseGrant> courseGrant;
     private final GateFaceSync gateFaceSync;
+    private final ObjectProvider<VisitService> visitService;
 
     public OrderService(TradeOrderMapper tradeOrderMapper, PaymentMapper paymentMapper,
                         CardProductMapper cardProductMapper, MembershipMapper membershipMapper,
                         AgreementMapper agreementMapper, AppConfigMapper appConfigMapper, StoreMapper storeMapper,
                         GymUserMapper gymUserMapper, CardService cardService, PayGateway payGateway,
                         Snowflake snowflake, TimeProvider timeProvider, ObjectProvider<CourseGrant> courseGrant,
-                        GateFaceSync gateFaceSync) {
+                        GateFaceSync gateFaceSync, ObjectProvider<VisitService> visitService) {
         this.tradeOrderMapper = tradeOrderMapper;
         this.paymentMapper = paymentMapper;
         this.cardProductMapper = cardProductMapper;
@@ -71,6 +73,7 @@ public class OrderService {
         this.timeProvider = timeProvider;
         this.courseGrant = courseGrant;
         this.gateFaceSync = gateFaceSync;
+        this.visitService = visitService;
     }
 
     @Transactional
@@ -286,7 +289,8 @@ public class OrderService {
         }
         LocalDateTime now = timeProvider.now();
         boolean course = "COURSE".equals(order.getBizType());
-        CardProduct card = course ? null : cardProductMapper.selectById(order.getProductId());
+        boolean visit = "VISIT".equals(order.getBizType());
+        CardProduct card = course || visit ? null : cardProductMapper.selectById(order.getProductId());
         boolean limited = card != null && card.getStockTotal() != null;
         if (limited) {
             int sold = "PENDING".equals(order.getStatus())
@@ -309,6 +313,13 @@ public class OrderService {
             CourseGrant grant = courseGrant.getIfAvailable();
             if (grant != null) {
                 grant.onPaid(order);
+            }
+            return;
+        }
+        if (visit) {
+            VisitService visits = visitService.getIfAvailable();
+            if (visits != null) {
+                visits.onPaid(order);
             }
             return;
         }

@@ -192,7 +192,7 @@ public class ShopService implements CourseGrant {
                 FROM equipment e
                 JOIN store s ON s.id = e.store_id
                 WHERE e.store_id = ? ORDER BY e.id
-                """, storeId);
+                """, storeId).stream().map(this::fitIntroField).toList();
     }
 
     public Map<String, Object> equipmentByCode(long storeId, String code) {
@@ -206,7 +206,7 @@ public class ShopService implements CourseGrant {
         if (rows.isEmpty()) {
             throw BizException.badRequest("没有这台器械的教程");
         }
-        return rows.get(0);
+        return fitIntroField(rows.get(0));
     }
 
     public void addGrouponRule(AdminPrincipal actor, long storeId, String platform, String code, long cardProductId) {
@@ -578,7 +578,14 @@ public class ShopService implements CourseGrant {
     }
 
     public Map<String, Object> franchisePage() {
-        return jdbc.queryForMap("SELECT intro, hotline, points, support, steps FROM franchise_page WHERE id = 1");
+        Map<String, Object> page = jdbc.queryForMap("SELECT intro, hotline, points, support, steps FROM franchise_page WHERE id = 1");
+        for (String key : List.of("intro", "points", "support", "steps")) {
+            Object value = page.get(key);
+            if (value != null) {
+                page.put(key, RichHtml.forDisplay(String.valueOf(value)));
+            }
+        }
+        return page;
     }
 
     public void saveFranchise(AdminPrincipal actor, String intro, String hotline, String points, String support, String steps) {
@@ -733,6 +740,13 @@ public class ShopService implements CourseGrant {
         return value == null || value.isBlank() ? null : value.trim();
     }
 
+    private Map<String, Object> fitIntroField(Map<String, Object> row) {
+        Object intro = row.get("intro");
+        if (intro != null) {
+            row.put("intro", RichHtml.forDisplay(String.valueOf(intro)));
+        }
+        return row;
+    }
 
     private record LessonToken(long userId, long packId, Instant expire) {
     }

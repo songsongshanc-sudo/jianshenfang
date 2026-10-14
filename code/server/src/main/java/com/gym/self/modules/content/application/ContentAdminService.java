@@ -16,6 +16,8 @@ import com.gym.self.modules.content.domain.Banner;
 import com.gym.self.modules.content.domain.BannerMapper;
 import com.gym.self.modules.content.domain.Notice;
 import com.gym.self.modules.content.domain.NoticeMapper;
+import com.gym.self.modules.content.domain.ServiceGuide;
+import com.gym.self.modules.content.domain.ServiceGuideMapper;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -27,15 +29,18 @@ public class ContentAdminService {
     private final BannerMapper bannerMapper;
     private final NoticeMapper noticeMapper;
     private final AgreementMapper agreementMapper;
+    private final ServiceGuideMapper serviceGuideMapper;
     private final AppConfigMapper appConfigMapper;
     private final TradeOrderMapper tradeOrderMapper;
     private final Snowflake snowflake;
 
     public ContentAdminService(BannerMapper bannerMapper, NoticeMapper noticeMapper, AgreementMapper agreementMapper,
-                               AppConfigMapper appConfigMapper, TradeOrderMapper tradeOrderMapper, Snowflake snowflake) {
+                               ServiceGuideMapper serviceGuideMapper, AppConfigMapper appConfigMapper,
+                               TradeOrderMapper tradeOrderMapper, Snowflake snowflake) {
         this.bannerMapper = bannerMapper;
         this.noticeMapper = noticeMapper;
         this.agreementMapper = agreementMapper;
+        this.serviceGuideMapper = serviceGuideMapper;
         this.appConfigMapper = appConfigMapper;
         this.tradeOrderMapper = tradeOrderMapper;
         this.snowflake = snowflake;
@@ -108,7 +113,8 @@ public class ContentAdminService {
             query.eq(Notice::getStatus, "ON");
         }
         return noticeMapper.selectList(query).stream()
-                .map(notice -> new NoticeView(String.valueOf(notice.getId()), notice.getContent(), notice.getStatus(), notice.getSortNo()))
+                .map(notice -> new NoticeView(String.valueOf(notice.getId()), RichHtml.forDisplay(notice.getContent()),
+                        notice.getStatus(), notice.getSortNo()))
                 .toList();
     }
 
@@ -232,6 +238,83 @@ public class ContentAdminService {
         return toAgreement(published.get(0));
     }
 
+    public List<ServiceGuideView> serviceGuides(AdminPrincipal actor) {
+        StoreScope.requireMaster(actor);
+        return serviceGuideMapper.selectList(new LambdaQueryWrapper<ServiceGuide>().orderByDesc(ServiceGuide::getVersionNo))
+                .stream()
+                .map(this::toServiceGuide)
+                .toList();
+    }
+
+    public ServiceGuideView updateServiceGuideDraft(AdminPrincipal actor, long id, String title, String content) {
+        StoreScope.requireMaster(actor);
+        ServiceGuide guide = mustServiceGuide(id);
+        if (!"DRAFT".equals(guide.getStatus())) {
+            throw BizException.badRequest("已发布的服务说明不能修改");
+        }
+        guide.setTitle(title.trim());
+        guide.setContent(RichHtml.required(content, "请填写服务说明正文"));
+        guide.setUpdatedAt(LocalDateTime.now());
+        serviceGuideMapper.updateById(guide);
+        return toServiceGuide(guide);
+    }
+
+    public void deleteServiceGuide(AdminPrincipal actor, long id) {
+        StoreScope.requireMaster(actor);
+        mustServiceGuide(id);
+        serviceGuideMapper.deleteById(id);
+    }
+
+    public ServiceGuideView publishServiceGuide(AdminPrincipal actor, long id) {
+        StoreScope.requireMaster(actor);
+        ServiceGuide guide = mustServiceGuide(id);
+        if (!"DRAFT".equals(guide.getStatus())) {
+            throw BizException.badRequest("只有草稿可以发布");
+        }
+        if (guide.getContent() == null || guide.getContent().isBlank()) {
+            throw BizException.badRequest("服务说明内容不能为空");
+        }
+        guide.setStatus("PUBLISHED");
+        guide.setUpdatedAt(LocalDateTime.now());
+        serviceGuideMapper.updateById(guide);
+        return toServiceGuide(guide);
+    }
+
+    public ServiceGuideView createServiceGuideDraft(AdminPrincipal actor) {
+        StoreScope.requireMaster(actor);
+        Long drafts = serviceGuideMapper.selectCount(new LambdaQueryWrapper<ServiceGuide>().eq(ServiceGuide::getStatus, "DRAFT"));
+        if (drafts != null && drafts > 0) {
+            throw BizException.badRequest("已有未发布草稿");
+        }
+        Integer maxVersion = serviceGuideMapper.selectList(new LambdaQueryWrapper<ServiceGuide>().orderByDesc(ServiceGuide::getVersionNo))
+                .stream()
+                .map(ServiceGuide::getVersionNo)
+                .findFirst()
+                .orElse(0);
+        LocalDateTime now = LocalDateTime.now();
+        ServiceGuide guide = new ServiceGuide();
+        guide.setId(snowflake.next());
+        guide.setTitle("会员服务说明");
+        guide.setVersionNo(maxVersion + 1);
+        guide.setContent("");
+        guide.setStatus("DRAFT");
+        guide.setCreatedAt(now);
+        guide.setUpdatedAt(now);
+        serviceGuideMapper.insert(guide);
+        return toServiceGuide(guide);
+    }
+
+    public ServiceGuideView currentServiceGuide() {
+        List<ServiceGuide> published = serviceGuideMapper.selectList(new LambdaQueryWrapper<ServiceGuide>()
+                .eq(ServiceGuide::getStatus, "PUBLISHED")
+                .orderByDesc(ServiceGuide::getVersionNo)
+                .last("LIMIT 1"));
+        if (published.isEmpty()) {
+            return null;
+        }
+        return toServiceGuide(published.get(0));
+    }
+
     public ConfigView config(AdminPrincipal actor) {
         StoreScope.requireMaster(actor);
         return readConfig();
@@ -317,6 +400,14 @@ public class ContentAdminService {
         return agreement;
     }
 
+    private ServiceGuide mustServiceGuide(long id) {
+        ServiceGuide guide = serviceGuideMapper.selectById(id);
+        if (guide == null) {
+            throw BizException.badRequest("服务说明不存在");
+        }
+        return guide;
+    }
+
     private BannerView toBanner(Banner banner) {
         return new BannerView(String.valueOf(banner.getId()), banner.getTitle(), banner.getImageUrl(),
                 banner.getLinkUrl(), banner.getSortNo(), banner.getStatus());
@@ -324,7 +415,12 @@ public class ContentAdminService {
 
     private AgreementView toAgreement(Agreement agreement) {
         return new AgreementView(String.valueOf(agreement.getId()), agreement.getTitle(), agreement.getVersionNo(),
-                agreement.getContent(), agreement.getStatus());
+                RichHtml.forDisplay(agreement.getContent()), agreement.getStatus());
+    }
+
+    private ServiceGuideView toServiceGuide(ServiceGuide guide) {
+        return new ServiceGuideView(String.valueOf(guide.getId()), guide.getTitle(), guide.getVersionNo(),
+                RichHtml.forDisplay(guide.getContent()), guide.getStatus());
     }
 
     private static String normalizeStatus(String status) {
@@ -354,6 +450,9 @@ public class ContentAdminService {
     }
 
     public record AgreementView(String id, String title, int versionNo, String content, String status) {
+    }
+
+    public record ServiceGuideView(String id, String title, int versionNo, String content, String status) {
     }
 
     public record ConfigView(int entryDebounceSeconds, int onlineWindowMinutes, int orderExpireMinutes,

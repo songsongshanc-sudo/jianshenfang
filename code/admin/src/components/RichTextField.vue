@@ -149,7 +149,7 @@ async function onFile(event: Event) {
     const response = await http.post<ApiBody<{ url: string }>>("/api/admin/files/images", body);
     const url = response.data.data.url.replace(/"/g, "");
     restoreSelection();
-    document.execCommand("insertHTML", false, `<img src="${url}" style="max-width:100%;">`);
+    document.execCommand("insertHTML", false, `<img src="${url}" style="max-width:100%;width:100%;height:auto;display:block;">`);
     sync();
     saveSelection();
   } catch {
@@ -208,6 +208,6 @@ async function onFile(event: Event) {
 .body :deep(h1) { font-size: 28px; margin: 8px 0; }
 .body :deep(h2) { font-size: 22px; margin: 8px 0; }
 .body :deep(h3) { font-size: 18px; margin: 8px 0; }
-.body :deep(img) { max-width: 100%; height: auto; display: block; margin: 8px 0; }
+.body :deep(img) { max-width: 100%; width: 100%; height: auto; display: block; margin: 8px 0; }
 .picker { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 </style>

@@ -105,6 +105,7 @@ async function buy() {
       data: { agreementId: agreement.id, agreementVersion: agreement.versionNo }
     });
     if (created.mockPay) {
+      // 测试逻辑：服务端返回 mockPay 时不调起微信支付。见 开发文档/前端测试逻辑-待删除.md
       await request({ url: `/api/mp/orders/${created.orderId}/mock-pay`, method: "POST" });
       uni.showToast({ title: "模拟支付成功", icon: "none" });
       uni.navigateTo({ url: "/package-coach/pages/lessons/lessons" });

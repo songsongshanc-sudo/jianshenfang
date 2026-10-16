@@ -33,12 +33,14 @@ public class GateController {
 
     @PostMapping("/api/admin/gates")
     public ApiResponse<IdView> create(@Valid @RequestBody CreateDevice request) {
-        return ApiResponse.ok(new IdView(gateService.createDevice(CurrentAdmin.get(), parseId(request.storeId()), request.name(), request.deviceSn())));
+        return ApiResponse.ok(new IdView(gateService.createDevice(CurrentAdmin.get(), parseId(request.storeId()),
+                request.name(), request.deviceSn(), request.direction())));
     }
 
     @PutMapping("/api/admin/gates/{id}")
     public ApiResponse<Void> update(@PathVariable String id, @Valid @RequestBody CreateDevice request) {
-        gateService.updateDevice(CurrentAdmin.get(), parseId(id), parseId(request.storeId()), request.name(), request.deviceSn());
+        gateService.updateDevice(CurrentAdmin.get(), parseId(id), parseId(request.storeId()), request.name(),
+                request.deviceSn(), request.direction());
         return ApiResponse.ok(null);
     }
 
@@ -135,7 +137,7 @@ public class GateController {
         }
     }
 
-    public record CreateDevice(@NotBlank String storeId, @NotBlank String name, String deviceSn) {
+    public record CreateDevice(@NotBlank String storeId, @NotBlank String name, String deviceSn, String direction) {
     }
 
     public record TokenView(String token) {

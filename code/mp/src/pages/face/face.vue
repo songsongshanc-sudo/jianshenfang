@@ -18,6 +18,7 @@ const localTest = ref(false);
 const replacing = ref(false);
 
 function allowLocal() {
+  // 测试逻辑：与注册页相同，微信正式版关闭。见 开发文档/前端测试逻辑-待删除.md
   try {
     return uni.getAccountInfoSync().miniProgram.envVersion !== "release";
   } catch {
@@ -91,6 +92,7 @@ function shoot() {
 }
 
 async function submitDemo() {
+  // 测试逻辑：「本机测试照片」按钮，上传固定测试字节。见 开发文档/前端测试逻辑-待删除.md
   const bytes = new Uint8Array(64);
   bytes.fill(8);
   const objectKey = await presign();

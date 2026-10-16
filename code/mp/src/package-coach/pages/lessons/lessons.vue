@@ -6,11 +6,12 @@
       <button class="primary" @click="scanRedeem">扫码核销</button>
       <input v-model="scan" placeholder="网页调试：粘贴课时码" />
       <button class="ghost" @click="redeemManual">粘贴核销</button>
+      <button class="ghost" @click="goCoachBookings">预约 / 申诉处理</button>
     </view>
 
     <template v-if="!coach.coach">
       <text class="section">我购买的课程</text>
-      <view v-if="rows.length === 0" class="empty">当前 0 节课时。学员买课后，才会在这里出现「出示课时码」。</view>
+      <view v-if="rows.length === 0" class="empty">当前 0 节课时。学员买课后，才会在这里出现「预约」和课时码。</view>
       <view v-for="item in rows" :key="item.pack_id" class="course">
         <image v-if="item.cover_url" class="cover" :src="item.cover_url" mode="aspectFill" />
         <view v-else class="cover soft">课</view>
@@ -19,12 +20,23 @@
           <text class="cmeta">剩余 {{ item.remaining }} 节</text>
           <view v-if="item.content" class="cdesc">{{ item.content }}</view>
         </view>
-        <view class="btn" @click="show(item)">出示课时二维码</view>
+        <view class="btns">
+          <view class="btn outline" @click="book(item)">预约</view>
+          <view class="btn" @click="show(item)">课时码</view>
+        </view>
+      </view>
+
+      <text class="section">我的预约</text>
+      <view v-if="bookings.length === 0" class="empty">暂无预约</view>
+      <view v-for="b in bookings" :key="b.id" class="booking" @click="goBooking(b.id)">
+        <text class="cname">{{ b.packName }}</text>
+        <text class="cmeta">{{ b.classDate }} {{ b.startHm }} · 座位 {{ b.seatNo }}</text>
+        <text class="cmeta">{{ statusText(b.status) }}</text>
       </view>
 
       <view class="card muted">
-        <text class="title">教练怎么核销？</text>
-        <text class="hint">后台把手机号登记为教练后，用该手机号登录，本页顶部会出现「扫码核销」。</text>
+        <text class="title">说明</text>
+        <text class="hint">预约成功后无需再出示课时码；临时上课可出示课时码请教练扫码扣课。</text>
       </view>
     </template>
 
@@ -59,6 +71,7 @@ import { onUnmounted, ref } from "vue";
 import { onShow } from "@dcloudio/uni-app";
 import UQRCode from "uqrcodejs";
 import { coachMe, lessonQr, myLessons, redeemLesson } from "../../../api/shop";
+import { myBookings, type BookingDetail } from "../../../api/lesson";
 
 interface LessonRow {
   pack_id: string;
@@ -69,6 +82,7 @@ interface LessonRow {
 }
 
 const rows = ref<LessonRow[]>([]);
+const bookings = ref<BookingDetail[]>([]);
 const coach = ref<{ coach: boolean; name?: string }>({ coach: false });
 const token = ref("");
 const modules = ref<Array<Array<{ isBlack: boolean }>>>([]);
@@ -89,14 +103,44 @@ onShow(async () => {
   } catch {
     coach.value = { coach: false };
   }
+  if (coach.value.coach) return;
   try {
     rows.value = await myLessons();
   } catch {
     rows.value = [];
   }
+  try {
+    bookings.value = await myBookings();
+  } catch {
+    bookings.value = [];
+  }
 });
 
 onUnmounted(() => clearTimer());
+
+function statusText(status: string) {
+  const map: Record<string, string> = {
+    PENDING_COACH: "待确认",
+    CONFIRMED: "已确认",
+    REJECTED: "已拒绝",
+    CANCELLED: "已取消",
+    APPEALING: "申诉中",
+    REFUNDED: "已退课",
+  };
+  return map[status] || status;
+}
+
+function book(item: LessonRow) {
+  uni.navigateTo({ url: `/package-coach/pages/book/book?packId=${item.pack_id}` });
+}
+
+function goBooking(id: string) {
+  uni.navigateTo({ url: `/package-coach/pages/booking/booking?id=${id}` });
+}
+
+function goCoachBookings() {
+  uni.navigateTo({ url: "/package-coach/pages/coach-bookings/coach-bookings" });
+}
 
 function clearTimer() {
   if (timer) {
@@ -179,7 +223,6 @@ async function doRedeem(value: string) {
   await redeemLesson(code);
   scan.value = "";
   closeQr();
-  rows.value = await myLessons();
   uni.showToast({ title: "已核销 1 节", icon: "none" });
 }
 
@@ -216,7 +259,7 @@ async function redeemManual() {
 .title { display: block; font-size: 30rpx; font-weight: 700; }
 .hint, .empty { display: block; margin-top: 10rpx; color: #8a8f98; font-size: 24rpx; line-height: 1.6; text-align: left; }
 
-.course {
+.course, .booking {
   display: flex;
   align-items: center;
   gap: 18rpx;
@@ -226,6 +269,7 @@ async function redeemManual() {
   background: #fff;
   border: 1px solid #eceff3;
 }
+.booking { flex-direction: column; align-items: flex-start; gap: 6rpx; }
 .cover { width: 120rpx; height: 120rpx; border-radius: 16rpx; background: #f3f4f6; flex-shrink: 0; }
 .cover.soft { display: flex; align-items: center; justify-content: center; color: #9ca3af; font-size: 40rpx; font-weight: 700; }
 .info { flex: 1; min-width: 0; }
@@ -241,15 +285,17 @@ async function redeemManual() {
   font-size: 22rpx;
   line-height: 1.5;
 }
+.btns { display: flex; flex-direction: column; gap: 10rpx; flex-shrink: 0; }
 .btn {
-  flex-shrink: 0;
   padding: 14rpx 22rpx;
   border-radius: 999rpx;
   background: #ea580c;
   color: #fff;
   font-size: 24rpx;
   font-weight: 700;
+  text-align: center;
 }
+.btn.outline { background: #fff7ed; color: #c2410c; }
 
 .mask { position: fixed; left: 0; right: 0; top: 0; bottom: 0; background: rgba(17, 24, 39, 0.45); display: flex; align-items: flex-end; z-index: 20; }
 .sheet { width: 100%; padding: 28rpx 28rpx 48rpx; border-radius: 24rpx 24rpx 0 0; background: #fff; box-sizing: border-box; }

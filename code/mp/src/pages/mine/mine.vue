@@ -1,11 +1,11 @@
 <template>
   <view class="page">
-    <view class="hero">
+    <view class="hero" :class="{ guest: !profile }">
       <view class="hero-top">
         <view class="avatar">{{ initial }}</view>
         <view class="who" @click="goProfileOrLogin">
-          <text class="nick">{{ profile ? (profile.nickname || "完善信息") : "还未登录" }} <text v-if="profile" class="arrow">›</text></text>
-          <text class="sub">{{ profile ? `已陪伴您 ${profile.companionDays} 天` : "登录后查看会员编号" }}</text>
+          <text class="nick">{{ profile ? (profile.nickname || "会员") : "欢迎来到健身房" }} <text v-if="profile" class="arrow">›</text></text>
+          <text class="sub">{{ profile ? `已陪伴您 ${profile.companionDays} 天` : "新用户注册，或用门店给的邀请码登录" }}</text>
           <text v-if="profile" class="sub">会员编号：{{ profile.memberNo || "—" }}</text>
         </view>
         <view v-if="profile" class="gear-wrap" @click="settings = true">
@@ -15,34 +15,37 @@
       <text v-if="profile?.consecutiveRemain != null" class="remain">激活连续月卡还需 {{ profile.consecutiveRemain }} 天</text>
       <text v-if="profile?.faceSync === 'PENDING'" class="remain">人脸正在同步到门店闸机</text>
       <text v-if="profile?.faceSync === 'FAILED'" class="remain">人脸同步失败，请联系门店重试</text>
-      <button v-if="!profile" class="hero-btn" @click="goLogin">手机号登录</button>
+      <view v-if="!profile" class="hero-actions">
+        <button class="hero-btn" @click="goLogin">立即注册</button>
+        <button class="hero-btn ghost" @click="goInvite">邀请码登录</button>
+      </view>
     </view>
 
-    <view v-if="profile" class="buy-card" @click="buy">
+    <view class="buy-card" @click="requireMember(buy)">
       <view>
         <text class="buy-title">会员卡购买</text>
-        <text class="buy-sub">{{ profile.storeMember ? "续费后可继续进店训练" : "开通即可进店训练、购买课程" }}</text>
+        <text class="buy-sub">{{ profile?.storeMember ? "续费后可继续进店训练" : "开通即可进店训练、购买课程" }}</text>
       </view>
-      <view class="buy-btn">去购买</view>
+      <view class="buy-btn">{{ profile ? "去购买" : "登录后购买" }}</view>
     </view>
 
     <view v-if="profile && isCoach" class="buy-card coach-card" @click="lessons">
       <view>
-        <text class="buy-title">教练核销</text>
-        <text class="buy-sub">粘贴学员课时码，扣减 1 节课</text>
+        <text class="buy-title">教练工作台</text>
+        <text class="buy-sub">扫码核销 · 预约同意/拒绝 · 申诉退课</text>
       </view>
-      <view class="buy-btn">去核销</view>
+      <view class="buy-btn">去处理</view>
     </view>
 
-    <view v-if="profile" class="pair">
-      <view class="pair-item" @click="lessons">
+    <view class="pair">
+      <view class="pair-item" @click="requireMember(lessons)">
         <view class="pair-ico"><image class="ico" src="/static/icon/lesson.png" mode="aspectFit" /></view>
         <view>
           <text class="pair-title">我的课程</text>
           <text class="pair-sub">{{ isCoach ? "核销 / 课时码" : "查看课时码" }}</text>
         </view>
       </view>
-      <view class="pair-item" @click="groupon = true">
+      <view class="pair-item" @click="requireMember(openGroupon)">
         <view class="pair-ico"><image class="ico" src="/static/icon/ticket.png" mode="aspectFit" /></view>
         <view>
           <text class="pair-title">团购核销</text>
@@ -51,23 +54,29 @@
       </view>
     </view>
 
-    <view v-if="profile" class="panel">
+    <view class="panel">
       <text class="panel-title">会员中心</text>
       <view class="grid">
-        <view class="cell" @click="go('/package-service/pages/messages/messages')"><view class="bubble"><image class="ico" src="/static/icon/bell.png" mode="aspectFit" /></view><text>系统消息</text></view>
-        <view class="cell" @click="orders"><view class="bubble"><image class="ico" src="/static/icon/order.png" mode="aspectFit" /></view><text>会员订单</text></view>
-        <view class="cell" @click="go('/package-service/pages/review/review')"><view class="bubble"><image class="ico" src="/static/icon/star.png" mode="aspectFit" /></view><text>好评赠卡</text></view>
-        <view class="cell" @click="goProfile"><view class="bubble"><image class="ico" src="/static/icon/camera.png" mode="aspectFit" /></view><text>完善信息</text></view>
+        <view class="cell" @click="requireMember(() => go('/package-service/pages/messages/messages'))">
+          <view class="bubble">
+            <image class="ico" src="/static/icon/bell.png" mode="aspectFit" />
+            <view v-if="profile && unread > 0" class="badge">{{ unread > 99 ? "99+" : unread }}</view>
+          </view>
+          <text>系统消息</text>
+        </view>
+        <view class="cell" @click="requireMember(orders)"><view class="bubble"><image class="ico" src="/static/icon/order.png" mode="aspectFit" /></view><text>会员订单</text></view>
+        <view class="cell" @click="requireMember(() => go('/package-service/pages/review/review'))"><view class="bubble"><image class="ico" src="/static/icon/star.png" mode="aspectFit" /></view><text>好评赠卡</text></view>
+        <view class="cell" @click="requireMember(goProfile)"><view class="bubble"><image class="ico" src="/static/icon/camera.png" mode="aspectFit" /></view><text>会员资料</text></view>
       </view>
     </view>
-    <view v-if="profile" class="panel">
+    <view class="panel">
       <text class="panel-title">门店服务</text>
       <view class="grid">
-        <view class="cell" @click="go('/package-service/pages/repair/repair')"><view class="bubble"><image class="ico" src="/static/icon/wrench.png" mode="aspectFit" /></view><text>器械报修</text></view>
-        <view class="cell" @click="go('/package-service/pages/complaint/complaint')"><view class="bubble"><image class="ico" src="/static/icon/chat.png" mode="aspectFit" /></view><text>投诉建议</text></view>
-        <view class="cell" @click="go('/package-service/pages/lost/lost')"><view class="bubble"><image class="ico" src="/static/icon/box.png" mode="aspectFit" /></view><text>失物招领</text></view>
-        <view class="cell" @click="go('/package-service/pages/equipment/equipment')"><view class="bubble"><image class="ico" src="/static/icon/dumbbell.png" mode="aspectFit" /></view><text>器械指导</text></view>
-        <view class="cell" @click="student"><view class="bubble"><image class="ico" src="/static/icon/cap.png" mode="aspectFit" /></view><text>学生认证</text></view>
+        <view class="cell" @click="requireMember(() => go('/package-service/pages/repair/repair'))"><view class="bubble"><image class="ico" src="/static/icon/wrench.png" mode="aspectFit" /></view><text>器械报修</text></view>
+        <view class="cell" @click="requireMember(() => go('/package-service/pages/complaint/complaint'))"><view class="bubble"><image class="ico" src="/static/icon/chat.png" mode="aspectFit" /></view><text>投诉建议</text></view>
+        <view class="cell" @click="requireMember(() => go('/package-service/pages/lost/lost'))"><view class="bubble"><image class="ico" src="/static/icon/box.png" mode="aspectFit" /></view><text>失物招领</text></view>
+        <view class="cell" @click="requireMember(() => go('/package-service/pages/equipment/equipment'))"><view class="bubble"><image class="ico" src="/static/icon/dumbbell.png" mode="aspectFit" /></view><text>器械指导</text></view>
+        <view class="cell" @click="requireMember(() => { void student(); })"><view class="bubble"><image class="ico" src="/static/icon/cap.png" mode="aspectFit" /></view><text>学生认证</text></view>
       </view>
     </view>
 
@@ -86,7 +95,7 @@
     <view v-if="settings" class="mask" @click="settings = false">
       <view class="sheet" @click.stop>
         <text class="sheet-title">设置</text>
-        <view class="sheet-row" @click="goProfile">完善信息 / 更换人脸</view>
+        <view class="sheet-row" @click="goProfile">会员资料</view>
         <view class="sheet-row" @click="agreement">会员协议</view>
         <view class="sheet-row danger" @click="logout">退出登录</view>
         <view class="cancel" @click="settings = false">取消</view>
@@ -99,11 +108,12 @@
 import { computed, ref } from "vue";
 import { onShow } from "@dcloudio/uni-app";
 import { me, type MeProfile } from "../../api/catalog";
-import { coachMe, redeemGroupon, studentStatus } from "../../api/shop";
+import { coachMe, redeemGroupon, studentStatus, unreadMessageCount } from "../../api/shop";
 import { useCurrentStore } from "../../stores/currentStore";
 
 const profile = ref<MeProfile | null>(null);
 const isCoach = ref(false);
+const unread = ref(0);
 const current = useCurrentStore();
 const groupon = ref(false);
 const settings = ref(false);
@@ -111,12 +121,13 @@ const platforms = ["MEITUAN", "DOUYIN"];
 const platformLabels = ["美团", "抖音"];
 const platformIndex = ref(0);
 const code = ref("");
-const initial = computed(() => (profile.value?.nickname || (profile.value ? "会" : "用")).slice(0, 1));
+const initial = computed(() => (profile.value?.nickname || "会").slice(0, 1));
 
 onShow(async () => {
   if (uni.getStorageSync("mpTokenType") !== "ACCESS") {
     profile.value = null;
     isCoach.value = false;
+    unread.value = 0;
     return;
   }
   try {
@@ -129,10 +140,31 @@ onShow(async () => {
   } catch {
     isCoach.value = false;
   }
+  try {
+    unread.value = Number((await unreadMessageCount()).count || 0);
+  } catch {
+    unread.value = 0;
+  }
 });
 
 function goLogin() {
   uni.navigateTo({ url: "/pages/login/login" });
+}
+
+function goInvite() {
+  uni.navigateTo({ url: "/pages/login/login?mode=invite" });
+}
+
+function requireMember(action: () => void) {
+  if (!profile.value) {
+    goLogin();
+    return;
+  }
+  action();
+}
+
+function openGroupon() {
+  groupon.value = true;
 }
 
 function goProfile() {
@@ -207,6 +239,15 @@ async function student() {
   background: #fff;
   border: 1px solid #eceff3;
 }
+.hero.guest {
+  background: linear-gradient(160deg, #1f2937 0%, #111827 70%);
+  border: none;
+  color: #fff;
+}
+.hero.guest .sub { color: rgba(255, 255, 255, 0.72); }
+.hero-actions { display: flex; flex-direction: column; gap: 16rpx; margin-top: 28rpx; }
+.hero.guest .hero-btn { margin: 0; background: #ea580c; color: #fff; }
+.hero.guest .hero-btn.ghost { background: transparent; color: #fff; border: 1px solid rgba(255, 255, 255, 0.45); }
 .hero-top { display: flex; align-items: center; gap: 20rpx; }
 .avatar { width: 96rpx; height: 96rpx; border-radius: 50%; background: #ea580c; color: #fff; text-align: center; line-height: 96rpx; font-size: 40rpx; font-weight: 700; }
 .who { flex: 1; min-width: 0; }
@@ -257,7 +298,21 @@ async function student() {
 .panel-title { display: block; padding: 16rpx 20rpx 0; font-size: 28rpx; font-weight: 700; }
 .grid { display: flex; flex-wrap: wrap; }
 .cell { width: 25%; display: flex; flex-direction: column; align-items: center; gap: 10rpx; padding: 20rpx 0; font-size: 22rpx; color: #404040; }
-.bubble { width: 80rpx; height: 80rpx; border-radius: 20rpx; background: #f8fafc; display: flex; align-items: center; justify-content: center; }
+.bubble { position: relative; width: 80rpx; height: 80rpx; border-radius: 20rpx; background: #f8fafc; display: flex; align-items: center; justify-content: center; }
+.badge {
+  position: absolute;
+  top: -8rpx;
+  right: -12rpx;
+  min-width: 32rpx;
+  padding: 0 8rpx;
+  height: 32rpx;
+  line-height: 32rpx;
+  border-radius: 999rpx;
+  background: #ea580c;
+  color: #fff;
+  font-size: 18rpx;
+  text-align: center;
+}
 .ico { width: 38rpx; height: 38rpx; }
 .mask { position: fixed; left: 0; right: 0; top: 0; bottom: 0; background: rgba(17, 24, 39, 0.45); display: flex; align-items: flex-end; z-index: 20; }
 .sheet { width: 100%; padding: 28rpx 28rpx 48rpx; border-radius: 24rpx 24rpx 0 0; background: #fff; box-sizing: border-box; }

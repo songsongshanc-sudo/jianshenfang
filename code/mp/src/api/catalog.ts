@@ -93,6 +93,7 @@ export interface CardItem {
 export interface MeProfile {
   registerStatus: string;
   nickname: string | null;
+  phone: string | null;
   memberNo: string | null;
   companionDays: number;
   consecutiveDays: number;

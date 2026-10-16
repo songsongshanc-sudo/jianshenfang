@@ -178,6 +178,7 @@ async function finishWxPay() {
 }
 
 async function pay() {
+  // 测试逻辑：按钮「模拟支付成功」。见 开发文档/前端测试逻辑-待删除.md
   if (!created.value || paying.value) {
     return;
   }

@@ -137,9 +137,23 @@ export function franchiseLead(body: { name: string; phone: string; budget: strin
 }
 
 export function messages() {
-  return request<Array<{ id: string; title: string; content: string; read_at: string | null }>>({ url: "/api/mp/messages", method: "GET" });
+  return request<
+    Array<{
+      id: string;
+      title: string;
+      content: string;
+      read_at: string | null;
+      created_at?: string;
+      biz_type?: string | null;
+      biz_id?: string | null;
+    }>
+  >({ url: "/api/mp/messages", method: "GET" });
 }
 
 export function readMessage(id: string) {
   return request<void>({ url: `/api/mp/messages/${id}/read`, method: "POST" });
+}
+
+export function unreadMessageCount() {
+  return request<{ count: number }>({ url: "/api/mp/messages/unread-count", method: "GET" });
 }

@@ -27,17 +27,18 @@
         <el-menu-item v-if="session.role === 'MASTER'" index="/configs">系统配置</el-menu-item>
         <el-menu-item index="/visit">参观卡</el-menu-item>
         <el-menu-item index="/cards">卡种</el-menu-item>
+        <el-menu-item index="/members">会员</el-menu-item>
         <el-menu-item index="/coaches">教练与课程</el-menu-item>
         <el-menu-item index="/groupon">团购</el-menu-item>
         <el-menu-item index="/orders">订单</el-menu-item>
         <el-menu-item index="/gates">闸机</el-menu-item>
-        <el-menu-item index="/doors">进店记录</el-menu-item>
+        <el-menu-item index="/doors">通行记录</el-menu-item>
         <el-menu-item index="/repairs">报修</el-menu-item>
         <el-menu-item index="/complaints">投诉</el-menu-item>
         <el-menu-item index="/lost">失物</el-menu-item>
         <el-menu-item v-if="session.role === 'MASTER'" index="/equipment">器械</el-menu-item>
         <el-menu-item v-if="session.role === 'MASTER'" index="/franchise">加盟</el-menu-item>
-        <el-menu-item v-if="session.role === 'MASTER'" index="/messages">消息</el-menu-item>
+        <el-menu-item index="/messages">消息</el-menu-item>
         <el-menu-item v-if="session.role === 'MASTER'" index="/violations">违规</el-menu-item>
       </el-menu>
     </el-aside>
@@ -82,11 +83,12 @@ const titles: Record<string, string> = {
   "/configs": "系统配置",
   "/visit": "参观卡",
   "/cards": "卡种",
+  "/members": "会员",
   "/coaches": "教练与课程",
   "/groupon": "团购",
   "/orders": "订单",
   "/gates": "闸机",
-  "/doors": "进店记录",
+  "/doors": "通行记录",
   "/repairs": "报修",
   "/complaints": "投诉",
   "/lost": "失物",

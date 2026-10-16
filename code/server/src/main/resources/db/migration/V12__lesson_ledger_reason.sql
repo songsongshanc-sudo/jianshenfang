@@ -1,0 +1,1 @@
+ALTER TABLE lesson_ledger ALTER COLUMN reason VARCHAR(64);

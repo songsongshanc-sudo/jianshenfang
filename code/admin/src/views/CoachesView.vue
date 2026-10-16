@@ -60,6 +60,9 @@
           <el-table-column label="单节时长" width="100">
             <template #default="{ row }">{{ row.minutes_per_lesson || 60 }} 分钟</template>
           </el-table-column>
+          <el-table-column label="教室" width="90">
+            <template #default="{ row }">{{ row.room_cols || 5 }}×{{ row.room_rows || 5 }}</template>
+          </el-table-column>
           <el-table-column prop="status" label="状态" width="80" />
           <el-table-column label="操作" width="160">
             <template #default="{ row }">
@@ -108,6 +111,8 @@
         <el-form-item label="价格（分）"><el-input-number v-model="packForm.priceFen" :min="0" :step="100" /></el-form-item>
         <el-form-item label="课时数"><el-input-number v-model="packForm.lessonCount" :min="1" :step="1" /></el-form-item>
         <el-form-item label="单节分钟"><el-input-number v-model="packForm.minutesPerLesson" :min="1" :step="5" /></el-form-item>
+        <el-form-item label="教室列数"><el-input-number v-model="packForm.roomCols" :min="1" :max="20" /></el-form-item>
+        <el-form-item label="教室行数"><el-input-number v-model="packForm.roomRows" :min="1" :max="20" /></el-form-item>
         <el-form-item label="封面"><ImageField v-model="packForm.coverUrl" biz="PACK" /></el-form-item>
         <el-form-item v-if="packForm.id" label="状态">
           <el-select v-model="packForm.status" style="width: 160px">
@@ -177,12 +182,13 @@ const packForm = reactive({
   priceFen: 0,
   lessonCount: 1,
   minutesPerLesson: 60,
+  roomCols: 5,
+  roomRows: 5,
   coverUrl: "",
   content: "",
   audience: "",
   status: "ON"
 });
-
 watch(certDraft, (value) => {
   if (!value) return;
   if (!coachForm.certs.includes(value)) {
@@ -277,6 +283,8 @@ function openPack(row?: Record<string, unknown>) {
   packForm.priceFen = row ? Number(row.price_fen || 0) : 0;
   packForm.lessonCount = row ? Number(row.lesson_count || 1) : 1;
   packForm.minutesPerLesson = row ? Number(row.minutes_per_lesson || 60) : 60;
+  packForm.roomCols = row ? Number(row.room_cols || 5) : 5;
+  packForm.roomRows = row ? Number(row.room_rows || 5) : 5;
   packForm.coverUrl = row ? String(row.cover_url || "") : "";
   packForm.content = row ? String(row.content || "") : "";
   packForm.audience = row ? String(row.audience || "") : "";
@@ -295,6 +303,8 @@ async function savePack() {
     priceFen: packForm.priceFen,
     lessonCount: packForm.lessonCount,
     minutesPerLesson: packForm.minutesPerLesson,
+    roomCols: packForm.roomCols,
+    roomRows: packForm.roomRows,
     coverUrl: packForm.coverUrl,
     content: packForm.content,
     audience: packForm.audience,

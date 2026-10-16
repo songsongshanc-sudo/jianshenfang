@@ -370,6 +370,71 @@ public class OrderService {
         return order.getId();
     }
 
+    @Transactional
+    public void grantStaffCard(long userId, long storeId, long cardProductId) {
+        CardProduct card = cardProductMapper.selectById(cardProductId);
+        if (card == null || !Long.valueOf(storeId).equals(card.getStoreId()) || !"ON".equals(card.getStatus())) {
+            throw BizException.rejected("卡种不存在");
+        }
+        insertStaffPaid(userId, storeId, "CARD", card.getId(), card.getName(), card.getPriceFen());
+        TradeOrder order = reloadByUserProduct(userId, card.getId());
+        LocalDateTime now = timeProvider.now();
+        if (card.getStockTotal() != null && cardProductMapper.sellOne(card.getId(), now) != 1) {
+            throw BizException.rejected("库存不足");
+        }
+        membershipMapper.insert(membership(order, card, now, "ADMIN"));
+        gateFaceSync.onMembership(userId, storeId);
+    }
+
+    @Transactional
+    public void grantStaffCourse(long userId, long storeId, long packId, String name, long priceFen) {
+        insertStaffPaid(userId, storeId, "COURSE", packId, name, priceFen);
+        TradeOrder order = reloadByUserProduct(userId, packId);
+        CourseGrant grant = courseGrant.getIfAvailable();
+        if (grant != null) {
+            grant.onPaid(order);
+        }
+    }
+
+    private void insertStaffPaid(long userId, long storeId, String biz, long productId, String name, long priceFen) {
+        LocalDateTime now = timeProvider.now();
+        TradeOrder order = new TradeOrder();
+        order.setId(snowflake.next());
+        order.setOrderNo(String.valueOf(order.getId()));
+        order.setUserId(userId);
+        order.setStoreId(storeId);
+        order.setBizType(biz);
+        order.setProductId(productId);
+        order.setProductName(name);
+        order.setAmountFen(priceFen);
+        order.setStatus("PAID");
+        order.setPaidAt(now);
+        order.setExpireAt(now);
+        order.setIdempotencyKey("staff-" + order.getId());
+        order.setCreatedAt(now);
+        order.setUpdatedAt(now);
+        tradeOrderMapper.insert(order);
+        Payment payment = new Payment();
+        payment.setId(snowflake.next());
+        payment.setOrderId(order.getId());
+        payment.setMchId("staff");
+        payment.setAmountFen(priceFen);
+        payment.setStatus("SUCCESS");
+        payment.setTransactionId("staff-" + order.getId());
+        payment.setCreatedAt(now);
+        payment.setUpdatedAt(now);
+        paymentMapper.insert(payment);
+    }
+
+    private TradeOrder reloadByUserProduct(long userId, long productId) {
+        return tradeOrderMapper.selectOne(new LambdaQueryWrapper<TradeOrder>()
+                .eq(TradeOrder::getUserId, userId)
+                .eq(TradeOrder::getProductId, productId)
+                .eq(TradeOrder::getStatus, "PAID")
+                .orderByDesc(TradeOrder::getId)
+                .last("LIMIT 1"));
+    }
+
     public int closeExpired() {
         LocalDateTime now = timeProvider.now();
         List<TradeOrder> due = tradeOrderMapper.selectList(new LambdaQueryWrapper<TradeOrder>()

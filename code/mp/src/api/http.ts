@@ -5,7 +5,7 @@ export interface ApiBody<T> {
   traceId: string;
 }
 
-const baseURL = "http://127.0.0.1:8080";
+const baseURL = "http://127.0.0.1:8080"; // 测试地址，正式版改成服务器域名。见 开发文档/前端测试逻辑-待删除.md
 
 export function request<T>(options: UniApp.RequestOptions): Promise<T> {
   return new Promise((resolve, reject) => {

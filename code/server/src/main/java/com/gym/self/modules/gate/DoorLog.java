@@ -18,6 +18,8 @@ public class DoorLog {
     private Long membershipId;
     private String channel;
     private String result;
+    /** ENTRY / EXIT，历史数据可空（按进店兼容） */
+    private String direction;
     private LocalDateTime createdAt;
     private LocalDateTime recogTime;
     private Integer passStatus;

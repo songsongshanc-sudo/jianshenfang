@@ -167,6 +167,11 @@ public class ShopController {
         return ApiResponse.ok(shopService.messages(CurrentMp.formal().userId()));
     }
 
+    @GetMapping("/api/mp/messages/unread-count")
+    public ApiResponse<Map<String, Object>> unreadCount() {
+        return ApiResponse.ok(Map.of("count", shopService.unreadMessageCount(CurrentMp.formal().userId())));
+    }
+
     @PostMapping("/api/mp/messages/{id}/read")
     public ApiResponse<Void> read(@PathVariable String id) {
         shopService.readMessage(CurrentMp.formal().userId(), parse(id));
@@ -301,13 +306,14 @@ public class ShopController {
     public ApiResponse<IdView> pack(@Valid @RequestBody PackSave request) {
         return ApiResponse.ok(new IdView(shopService.savePack(CurrentAdmin.get(), parse(request.coachId()), request.name(),
                 request.priceFen(), request.lessonCount(), request.content(), request.audience(), request.coverUrl(),
-                request.minutesPerLesson())));
+                request.minutesPerLesson(), request.roomCols(), request.roomRows())));
     }
 
     @PutMapping("/api/admin/packs/{id}")
     public ApiResponse<Void> updatePack(@PathVariable String id, @Valid @RequestBody PackUpdate request) {
         shopService.updatePack(CurrentAdmin.get(), parse(id), request.name(), request.priceFen(), request.lessonCount(),
-                request.content(), request.audience(), request.coverUrl(), request.minutesPerLesson(), request.status());
+                request.content(), request.audience(), request.coverUrl(), request.minutesPerLesson(), request.status(),
+                request.roomCols(), request.roomRows());
         return ApiResponse.ok(null);
     }
 
@@ -444,11 +450,11 @@ public class ShopController {
     }
 
     public record PackSave(@NotBlank String coachId, @NotBlank String name, long priceFen, int lessonCount, String content,
-                           String audience, String coverUrl, Integer minutesPerLesson) {
+                           String audience, String coverUrl, Integer minutesPerLesson, Integer roomCols, Integer roomRows) {
     }
 
     public record PackUpdate(@NotBlank String name, long priceFen, int lessonCount, String content, String audience,
-                             String coverUrl, Integer minutesPerLesson, String status) {
+                             String coverUrl, Integer minutesPerLesson, String status, Integer roomCols, Integer roomRows) {
     }
 
     public record FranchiseRequest(String intro, String hotline, String points, String support, String steps) {

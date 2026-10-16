@@ -26,11 +26,13 @@ import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 @Service
 public class GateService {
@@ -69,7 +71,7 @@ public class GateService {
         this.timeProvider = timeProvider;
     }
 
-    public String createDevice(AdminPrincipal actor, long storeId, String name, String deviceSn) {
+    public String createDevice(AdminPrincipal actor, long storeId, String name, String deviceSn, String direction) {
         StoreScope.requireMaster(actor);
         mustStore(storeId);
         GateDevice device = new GateDevice();
@@ -89,6 +91,7 @@ public class GateService {
         device.setDeviceSn(sn);
         device.setSecret(HexFormat.of().formatHex(String.valueOf(snowflake.next()).getBytes(StandardCharsets.UTF_8)).substring(0, 32));
         device.setName(name.trim());
+        device.setDirection(normalizeDirection(direction));
         device.setStatus("ENABLED");
         device.setLastBeatAt(null);
         gateDeviceMapper.insert(device);
@@ -117,7 +120,7 @@ public class GateService {
         }
     }
 
-    public void updateDevice(AdminPrincipal actor, long id, long storeId, String name, String deviceSn) {
+    public void updateDevice(AdminPrincipal actor, long id, long storeId, String name, String deviceSn, String direction) {
         StoreScope.requireMaster(actor);
         mustStore(storeId);
         if (name == null || name.isBlank()) {
@@ -139,6 +142,7 @@ public class GateService {
         device.setStoreId(storeId);
         device.setName(name.trim());
         device.setDeviceSn(sn);
+        device.setDirection(normalizeDirection(direction));
         gateDeviceMapper.updateById(device);
         if (storeChanged || snChanged) {
             gateFaceSync.onDeviceReady(device.getId());
@@ -171,7 +175,8 @@ public class GateService {
                     .orderByDesc(GateSyncTask::getUpdatedAt)
                     .last("LIMIT 1"));
             return new DeviceView(String.valueOf(device.getId()), String.valueOf(device.getStoreId()),
-                    store == null ? "" : store.getName(), device.getDeviceSn(), device.getName(), device.getStatus(),
+                    store == null ? "" : store.getName(), device.getDeviceSn(), device.getName(),
+                    deviceDirection(device), device.getStatus(),
                     online, secret, device.getFirmware() == null ? "" : device.getFirmware(), pending, failed,
                     error == null || error.getLastError() == null ? "" : error.getLastError(),
                     device.getToken() != null && !device.getToken().isBlank());
@@ -304,13 +309,14 @@ public class GateService {
             log(user.getId(), device, null, "REJECTED", now);
             return new VerifyResult(false, "非本店会员");
         }
-        if (pass == null && visits != null && visits.canOpenByVisit(user.getId(), device.getStoreId())) {
+        String direction = deviceDirection(device);
+        if (pass == null && visits != null && visits.canOpenByVisit(user.getId(), device.getStoreId(), direction)) {
             int window = debounceSeconds();
             if (gateState.withinDebounce(user.getId(), device.getDeviceSn(), Duration.ofSeconds(window))) {
                 return new VerifyResult(true, "开门");
             }
             log(user.getId(), device, null, "SUCCESS", now);
-            visits.onGateSuccess(user.getId(), device.getStoreId());
+            visits.onGateSuccess(user.getId(), device.getStoreId(), direction);
             return new VerifyResult(true, "开门");
         }
         if (pass == null) {
@@ -337,7 +343,7 @@ public class GateService {
                     return new VisitView(
                             String.valueOf(row.getId()),
                             store == null ? "" : store.getName(),
-                            "SUCCESS".equals(row.getResult()) ? "进店成功" : "未通过",
+                            passLabel(row.getResult(), row.getDirection()),
                             row.getCreatedAt());
                 })
                 .toList();
@@ -356,20 +362,34 @@ public class GateService {
                     .eq(UserFace::getUserId, user.getId()).eq(UserFace::getStatus, "ENROLLED")
                     .orderByDesc(UserFace::getId).last("LIMIT 1"));
             String memberNo = user == null ? strangerName(row.getMemberKey()) : user.getMemberNo();
+            String direction = row.getDirection() == null || row.getDirection().isBlank() ? "ENTRY" : row.getDirection();
             return new DoorView(String.valueOf(row.getId()), String.valueOf(row.getStoreId()), row.getDeviceSn(),
                     user == null ? "" : String.valueOf(user.getId()),
-                    memberNo, face == null ? "未采集" : "已采集", row.getResult(),
+                    memberNo, face == null ? "未采集" : "已采集", row.getResult(), direction,
                     row.getCreatedAt());
         }).toList();
     }
 
     public int onlineCount(long storeId) {
         LocalDateTime from = timeProvider.now().minusMinutes(onlineMinutes());
-        return doorLogMapper.selectList(new LambdaQueryWrapper<DoorLog>()
-                        .eq(DoorLog::getStoreId, storeId)
-                        .eq(DoorLog::getResult, "SUCCESS")
-                        .ge(DoorLog::getCreatedAt, from))
-                .stream().map(DoorLog::getUserId).filter(Objects::nonNull).distinct().toList().size();
+        List<DoorLog> rows = doorLogMapper.selectList(new LambdaQueryWrapper<DoorLog>()
+                .eq(DoorLog::getStoreId, storeId)
+                .eq(DoorLog::getResult, "SUCCESS")
+                .ge(DoorLog::getCreatedAt, from)
+                .isNotNull(DoorLog::getUserId));
+        Map<Long, DoorLog> latest = rows.stream().collect(Collectors.toMap(
+                DoorLog::getUserId,
+                row -> row,
+                (a, b) -> {
+                    int cmp = Comparator.nullsLast(LocalDateTime::compareTo).compare(a.getCreatedAt(), b.getCreatedAt());
+                    if (cmp != 0) {
+                        return cmp > 0 ? a : b;
+                    }
+                    return a.getId() != null && b.getId() != null && a.getId() > b.getId() ? a : b;
+                }));
+        return (int) latest.values().stream()
+                .filter(row -> !"EXIT".equals(row.getDirection()))
+                .count();
     }
 
     public boolean memberNow(Long userId, long storeId) {
@@ -434,11 +454,36 @@ public class GateService {
         row.setMembershipId(membershipId);
         row.setChannel("FACE");
         row.setResult(result);
+        row.setDirection(deviceDirection(device));
         row.setCreatedAt(now);
         row.setRecogTime(recogTime);
         row.setPassStatus(passStatus);
         row.setMemberKey(memberKey);
         doorLogMapper.insert(row);
+    }
+
+    static String normalizeDirection(String direction) {
+        if (direction == null || direction.isBlank() || "ENTRY".equalsIgnoreCase(direction.trim())) {
+            return "ENTRY";
+        }
+        if ("EXIT".equalsIgnoreCase(direction.trim())) {
+            return "EXIT";
+        }
+        throw BizException.badRequest("请选择进店或出店闸机");
+    }
+
+    static String deviceDirection(GateDevice device) {
+        if (device == null || device.getDirection() == null || device.getDirection().isBlank()) {
+            return "ENTRY";
+        }
+        return "EXIT".equalsIgnoreCase(device.getDirection()) ? "EXIT" : "ENTRY";
+    }
+
+    private static String passLabel(String result, String direction) {
+        if (!"SUCCESS".equals(result)) {
+            return "未通过";
+        }
+        return "EXIT".equals(direction) ? "出店成功" : "进店成功";
     }
 
     private Outcome decide(GateDevice device, GymUser user, LocalDateTime recogTime, String memberKey) {
@@ -463,12 +508,13 @@ public class GateService {
             log(user.getId(), device, null, "REJECTED", now, recogTime, 1, memberKey);
             return Outcome.OTHER_STORE;
         }
-        if (pass == null && visits != null && visits.canOpenByVisit(user.getId(), device.getStoreId())) {
+        String direction = deviceDirection(device);
+        if (pass == null && visits != null && visits.canOpenByVisit(user.getId(), device.getStoreId(), direction)) {
             if (gateState.withinDebounce(user.getId(), device.getDeviceSn(), Duration.ofSeconds(debounceSeconds()))) {
                 return Outcome.OPEN;
             }
             log(user.getId(), device, null, "SUCCESS", now, recogTime, 0, user.getMemberNo());
-            visits.onGateSuccess(user.getId(), device.getStoreId());
+            visits.onGateSuccess(user.getId(), device.getStoreId(), direction);
             return Outcome.OPEN;
         }
         if (pass == null) {
@@ -581,13 +627,13 @@ public class GateService {
         return device;
     }
 
-    public record DeviceView(String id, String storeId, String storeName, String deviceSn, String name, String status,
-                             boolean online, String secret, String firmware, int pendingCount, int failedCount,
-                             String lastError, boolean signed) {
+    public record DeviceView(String id, String storeId, String storeName, String deviceSn, String name, String direction,
+                             String status, boolean online, String secret, String firmware, int pendingCount,
+                             int failedCount, String lastError, boolean signed) {
     }
 
     public record DoorView(String id, String storeId, String deviceSn, String userId, String memberNo, String face,
-                           String result, LocalDateTime createdAt) {
+                           String result, String direction, LocalDateTime createdAt) {
     }
 
     public record VisitView(String id, String storeName, String result, LocalDateTime createdAt) {

@@ -41,10 +41,9 @@ public class VisitService {
     private static final Logger log = LoggerFactory.getLogger(VisitService.class);
     private static final String BIZ = "VISIT";
     private static final long PRODUCT_ID = 0L;
-    private static final int MIN_EXIT_SECONDS = 60;
     private static final int FORFEIT_GRACE_HOURS = 2;
     private static final Set<String> OPEN_STATUSES = Set.of("UNUSED", "IN_STORE", "TIMEOUT_FORFEIT");
-    private static final String DEFAULT_NOTICE = "支付金额为参观押金，不是会费。仅可到下单时选中的门店刷脸参观一次；进店后请在规定时长内离店（再次刷脸视为离店），按时离店将原路退回押金；超时未离店将扣除全部押金。购买后若从未进店，可申请退款；有效期到期仍未进店将自动退回。";
+    private static final String DEFAULT_NOTICE = "支付金额为参观押金，不是会费。仅可到下单时选中的门店参观一次；请从进店闸机入场、出店闸机离场，按时离店将原路退回押金；超时未离店将扣除全部押金。购买后若从未进店，可申请退款；有效期到期仍未进店将自动退回。";
 
     private final AppConfigMapper appConfigMapper;
     private final VisitPassMapper visitPassMapper;
@@ -249,14 +248,15 @@ public class VisitService {
         gateFaceSync.onVisitChanged(order.getUserId(), order.getStoreId());
     }
 
-    public boolean canOpenByVisit(long userId, long storeId) {
+    public boolean canOpenByVisit(long userId, long storeId, String direction) {
         VisitPass pass = activePass(userId);
         if (pass == null || pass.getStoreId() == null || !pass.getStoreId().equals(storeId)) {
             return false;
         }
         LocalDateTime now = timeProvider.now();
+        boolean exit = "EXIT".equalsIgnoreCase(direction == null ? "" : direction);
         return switch (pass.getStatus()) {
-            case "UNUSED" -> !pass.getValidUntil().isBefore(now);
+            case "UNUSED" -> !exit && !pass.getValidUntil().isBefore(now);
             case "IN_STORE", "TIMEOUT_FORFEIT" -> true;
             default -> false;
         };
@@ -287,14 +287,22 @@ public class VisitService {
     }
 
     @Transactional
-    public GateEffect onGateSuccess(long userId, long storeId) {
+    public GateEffect onGateSuccess(long userId, long storeId, String direction) {
         VisitPass pass = activePass(userId);
-        if (pass == null) {
+        if (pass == null || pass.getStoreId() == null || !pass.getStoreId().equals(storeId)) {
             return GateEffect.NONE;
         }
         LocalDateTime now = timeProvider.now();
+        boolean exit = "EXIT".equalsIgnoreCase(direction == null ? "" : direction);
+        if (exit) {
+            if (!"IN_STORE".equals(pass.getStatus()) && !"TIMEOUT_FORFEIT".equals(pass.getStatus())) {
+                return GateEffect.NONE;
+            }
+            finishExit(pass, now);
+            return GateEffect.EXITED;
+        }
         if ("UNUSED".equals(pass.getStatus())) {
-            if (pass.getValidUntil().isBefore(now) || pass.getStoreId() == null || !pass.getStoreId().equals(storeId)) {
+            if (pass.getValidUntil().isBefore(now)) {
                 return GateEffect.NONE;
             }
             pass.setStatus("IN_STORE");
@@ -303,16 +311,6 @@ public class VisitService {
             pass.setUpdatedAt(now);
             visitPassMapper.updateById(pass);
             return GateEffect.ENTERED;
-        }
-        if ("IN_STORE".equals(pass.getStatus()) || "TIMEOUT_FORFEIT".equals(pass.getStatus())) {
-            if (pass.getStoreId() == null || !pass.getStoreId().equals(storeId)) {
-                return GateEffect.NONE;
-            }
-            if (pass.getEnteredAt() != null && pass.getEnteredAt().plusSeconds(MIN_EXIT_SECONDS).isAfter(now)) {
-                return GateEffect.NONE;
-            }
-            finishExit(pass, now);
-            return GateEffect.EXITED;
         }
         return GateEffect.NONE;
     }

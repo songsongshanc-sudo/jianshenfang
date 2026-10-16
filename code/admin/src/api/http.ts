@@ -24,6 +24,9 @@ http.interceptors.request.use((config) => {
 
 http.interceptors.response.use(
   (response) => {
+    if (response.config.responseType === "blob") {
+      return response;
+    }
     const body = response.data as ApiBody<unknown>;
     if (body && typeof body.code === "number" && body.code !== 0) {
       ElMessage.error(body.message || "请求失败");
@@ -31,10 +34,19 @@ http.interceptors.response.use(
     }
     return response;
   },
-  (error) => {
-    const message = error?.response?.data?.message || "网络异常";
+  async (error) => {
     if (error?.response?.status === 401) {
       useSessionStore().clear();
+    }
+    let message = error?.response?.data?.message || "网络异常";
+    if (error?.response?.data instanceof Blob) {
+      try {
+        const text = await error.response.data.text();
+        const parsed = JSON.parse(text) as { message?: string };
+        if (parsed.message) message = parsed.message;
+      } catch {
+        /* keep default */
+      }
     }
     ElMessage.error(message);
     return Promise.reject(error);

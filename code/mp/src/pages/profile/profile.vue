@@ -1,14 +1,16 @@
 <template>
   <view class="page">
     <view class="card">
-      <text class="label">昵称</text>
-      <input v-model="nickname" maxlength="32" placeholder="填写称呼，方便客服联系你" />
-      <button class="save" @click="save">保存昵称</button>
+      <text class="label">姓名</text>
+      <text class="value">{{ name || "—" }}</text>
+      <text class="label">手机号</text>
+      <text class="value">{{ phone || "—" }}</text>
+      <text class="hint">姓名和手机号注册后不能修改。</text>
     </view>
     <view class="card">
       <text class="label">人脸照片</text>
-      <text class="hint">闸机用这张正脸识别进店。更换后会重新同步到门店设备。</text>
-      <button class="ghost" @click="replaceFace">拍摄新的正脸</button>
+      <image v-if="preview" class="preview" :src="preview" mode="aspectFill" />
+      <text class="hint">人脸用于闸机识别，不能更换。</text>
     </view>
   </view>
 </template>
@@ -16,47 +18,32 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { onShow } from "@dcloudio/uni-app";
-import { me, updateProfile } from "../../api/catalog";
+import { me } from "../../api/catalog";
+import { facePreviewBase64 } from "../../api/auth";
 import { useCurrentStore } from "../../stores/currentStore";
 
 const current = useCurrentStore();
-const nickname = ref("");
+const name = ref("");
+const phone = ref("");
+const preview = ref("");
 
 onShow(async () => {
   if (uni.getStorageSync("mpTokenType") !== "ACCESS") {
     uni.redirectTo({ url: "/pages/login/login" });
     return;
   }
-  try {
-    const profile = await me(current.storeId || undefined);
-    nickname.value = profile.nickname || "";
-  } catch {
-    nickname.value = "";
-  }
+  const profile = await me(current.storeId || undefined);
+  name.value = profile.nickname || "";
+  phone.value = profile.phone || "";
+  preview.value = await facePreviewBase64().catch(() => "");
 });
-
-async function save() {
-  await updateProfile(nickname.value.trim());
-  uni.showToast({ title: "已保存", icon: "none" });
-}
-
-function replaceFace() {
-  uni.navigateTo({ url: "/pages/face/face?mode=replace" });
-}
 </script>
 
 <style scoped>
 .page { padding: 24rpx 24rpx 48rpx; }
-.card {
-  margin-bottom: 16rpx;
-  padding: 28rpx;
-  border-radius: 20rpx;
-  background: #fff;
-  border: 1px solid #eceff3;
-}
-.label { display: block; margin-bottom: 16rpx; font-size: 30rpx; font-weight: 700; }
-.hint { display: block; margin-bottom: 20rpx; color: #8a8f98; font-size: 24rpx; line-height: 1.6; }
-input { background: #f5f6f8; }
-.save { margin-top: 20rpx; }
-.ghost { margin: 0; background: #fff4ed; color: #c2410c; }
+.card { margin-bottom: 16rpx; padding: 28rpx; border-radius: 20rpx; background: #fff; border: 1px solid #eceff3; }
+.label { display: block; margin-top: 8rpx; color: #8a8f98; font-size: 24rpx; }
+.value { display: block; margin-top: 8rpx; font-size: 32rpx; font-weight: 700; }
+.hint { display: block; margin-top: 16rpx; color: #8a8f98; font-size: 24rpx; line-height: 1.6; }
+.preview { width: 240rpx; height: 240rpx; margin-top: 16rpx; border-radius: 16rpx; background: #f3f4f6; }
 </style>

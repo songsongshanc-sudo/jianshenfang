@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gym.self.common.api.ApiResponse;
 import com.gym.self.common.api.ErrorCode;
 import com.gym.self.modules.adminuser.auth.AdminJwtFilter;
+import com.gym.self.modules.adminuser.application.AdminOpLogFilter;
 import com.gym.self.modules.user.auth.MpJwtFilter;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
@@ -27,7 +28,7 @@ public class SecurityConfig {
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http, ObjectMapper objectMapper, AdminJwtFilter jwtFilter,
-                                            MpJwtFilter mpJwtFilter)
+                                            MpJwtFilter mpJwtFilter, AdminOpLogFilter opLogFilter)
             throws Exception {
         http.csrf(AbstractHttpConfigurer::disable)
                 .cors(Customizer.withDefaults())
@@ -43,6 +44,7 @@ public class SecurityConfig {
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable)
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(opLogFilter, AdminJwtFilter.class)
                 .addFilterBefore(mpJwtFilter, AdminJwtFilter.class);
         return http.build();
     }

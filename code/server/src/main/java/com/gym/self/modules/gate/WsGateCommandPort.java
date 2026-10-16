@@ -81,6 +81,10 @@ public class WsGateCommandPort {
     }
 
     public JsonNode exchange(String sn, Map<String, Object> data) {
+        return exchange(sn, data, 5);
+    }
+
+    public JsonNode exchange(String sn, Map<String, Object> data, int timeoutSeconds) {
         WebSocketSession session = sessions.get(sn);
         if (session == null || !session.isOpen()) {
             return null;
@@ -98,7 +102,7 @@ public class WsGateCommandPort {
             synchronized (session) {
                 session.sendMessage(new TextMessage(objectMapper.writeValueAsString(envelope)));
             }
-            return future.get(5, TimeUnit.SECONDS);
+            return future.get(timeoutSeconds, TimeUnit.SECONDS);
         } catch (Exception exception) {
             pending.remove(id);
             log.warn("下发闸机指令失败 {} {}", sn, data.get("cmd"));

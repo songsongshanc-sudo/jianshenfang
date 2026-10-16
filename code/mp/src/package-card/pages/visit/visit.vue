@@ -45,6 +45,7 @@ async function buy() {
     const key = `visit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const created = await createVisitOrder(storeId.value, key);
     if (created.mockPay) {
+      // 测试逻辑：服务端返回 mockPay 时不调起微信支付。见 开发文档/前端测试逻辑-待删除.md
       await mockVisitPay(created.orderId);
     } else {
       await requestWxPay(created);

@@ -335,7 +335,8 @@ public class ShopService implements CourseGrant {
     }
 
     public String savePack(AdminPrincipal actor, long coachId, String name, long priceFen, int lessonCount,
-                           String content, String audience, String coverUrl, Integer minutesPerLesson) {
+                           String content, String audience, String coverUrl, Integer minutesPerLesson,
+                           Integer roomCols, Integer roomRows) {
         long storeId = coachStoreId(coachId);
         StoreScope.requireStoreAccess(actor, storeId);
         requireText(name, "请填写课程名称");
@@ -344,16 +345,19 @@ public class ShopService implements CourseGrant {
         }
         long id = snowflake.next();
         int minutes = minutesPerLesson == null || minutesPerLesson < 1 ? 60 : minutesPerLesson;
+        int cols = normalizeRoom(roomCols);
+        int rows = normalizeRoom(roomRows);
         jdbc.update("""
-                INSERT INTO course_pack (id, coach_id, store_id, name, price_fen, lesson_count, content, audience, cover_url, minutes_per_lesson, status, created_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?, 'ON', ?)
+                INSERT INTO course_pack (id, coach_id, store_id, name, price_fen, lesson_count, content, audience, cover_url, minutes_per_lesson, room_cols, room_rows, status, created_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'ON', ?)
                 """, id, coachId, storeId, name.trim(), priceFen, lessonCount, blank(content), blank(audience),
-                blank(coverUrl), minutes, timeProvider.now());
+                blank(coverUrl), minutes, cols, rows, timeProvider.now());
         return String.valueOf(id);
     }
 
     public void updatePack(AdminPrincipal actor, long id, String name, long priceFen, int lessonCount,
-                           String content, String audience, String coverUrl, Integer minutesPerLesson, String status) {
+                           String content, String audience, String coverUrl, Integer minutesPerLesson, String status,
+                           Integer roomCols, Integer roomRows) {
         long storeId = packStoreId(id);
         StoreScope.requireStoreAccess(actor, storeId);
         requireText(name, "请填写课程名称");
@@ -362,10 +366,13 @@ public class ShopService implements CourseGrant {
         }
         String nextStatus = "OFF".equals(status) ? "OFF" : "ON";
         int minutes = minutesPerLesson == null || minutesPerLesson < 1 ? 60 : minutesPerLesson;
+        int cols = normalizeRoom(roomCols);
+        int rows = normalizeRoom(roomRows);
         int updated = jdbc.update("""
-                UPDATE course_pack SET name=?, price_fen=?, lesson_count=?, content=?, audience=?, cover_url=?, minutes_per_lesson=?, status=?
+                UPDATE course_pack SET name=?, price_fen=?, lesson_count=?, content=?, audience=?, cover_url=?, minutes_per_lesson=?, room_cols=?, room_rows=?, status=?
                 WHERE id=?
-                """, name.trim(), priceFen, lessonCount, blank(content), blank(audience), blank(coverUrl), minutes, nextStatus, id);
+                """, name.trim(), priceFen, lessonCount, blank(content), blank(audience), blank(coverUrl), minutes, cols, rows,
+                nextStatus, id);
         if (updated != 1) {
             throw BizException.badRequest("课程不存在");
         }
@@ -638,7 +645,23 @@ public class ShopService implements CourseGrant {
     }
 
     public List<Map<String, Object>> messages(long userId) {
-        return jdbc.queryForList("SELECT id, title, content, read_at, created_at FROM inbox_message WHERE user_id = ? ORDER BY id DESC", userId);
+        return jdbc.queryForList("""
+                SELECT id, title, content, read_at, created_at, biz_type, biz_id, store_id, coach_id
+                FROM inbox_message WHERE user_id = ? ORDER BY id DESC
+                """, userId).stream().map(row -> {
+            Map<String, Object> m = new java.util.HashMap<>(row);
+            if (m.get("id") != null) m.put("id", String.valueOf(m.get("id")));
+            if (m.get("biz_id") != null) m.put("biz_id", String.valueOf(m.get("biz_id")));
+            if (m.get("store_id") != null) m.put("store_id", String.valueOf(m.get("store_id")));
+            if (m.get("coach_id") != null) m.put("coach_id", String.valueOf(m.get("coach_id")));
+            return m;
+        }).toList();
+    }
+
+    public int unreadMessageCount(long userId) {
+        Integer n = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM inbox_message WHERE user_id = ? AND read_at IS NULL", Integer.class, userId);
+        return n == null ? 0 : n;
     }
 
     public void readMessage(long userId, long id) {
@@ -738,6 +761,14 @@ public class ShopService implements CourseGrant {
 
     private static String blank(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private static int normalizeRoom(Integer value) {
+        int n = value == null ? 5 : value;
+        if (n < 1 || n > 20) {
+            throw BizException.badRequest("教室长宽须在 1～20");
+        }
+        return n;
     }
 
     private Map<String, Object> fitIntroField(Map<String, Object> row) {

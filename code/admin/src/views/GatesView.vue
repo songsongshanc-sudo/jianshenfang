@@ -2,8 +2,8 @@
   <div>
     <h1>闸机</h1>
     <p class="lead">
-      总账号在管理端登记设备号（机身编号）。闸机屏幕上只配服务器域名：HTTPS 验脸和
-      <code>wss://同一域名/ws/gate</code> 长连接用的是同一台后端。人脸在购卡后下发到本店闸机，离线会自动补发。模拟验码仍用旧密钥，方便没有闸机时验收开门规则。
+      每店通常登记两台：进门处为「进店闸机」，出门处为「出店闸机」。闸机屏幕只配服务器域名（HTTPS 验脸与
+      <code>wss://同一域名/ws/gate</code>）。人脸购卡后下发到本店全部启用闸机。模拟验码仍用旧密钥。
     </p>
     <el-form v-if="session.role === 'MASTER'" :inline="true" @submit.prevent="create">
       <el-form-item label="门店">
@@ -13,11 +13,20 @@
       </el-form-item>
       <el-form-item label="名称"><el-input v-model="form.name" /></el-form-item>
       <el-form-item label="设备号"><el-input v-model="form.deviceSn" placeholder="机身设备号" /></el-form-item>
+      <el-form-item label="方向">
+        <el-select v-model="form.direction" style="width: 140px">
+          <el-option label="进店闸机" value="ENTRY" />
+          <el-option label="出店闸机" value="EXIT" />
+        </el-select>
+      </el-form-item>
       <el-form-item><el-button type="primary" native-type="submit">登记</el-button></el-form-item>
     </el-form>
     <el-table :data="rows">
       <el-table-column prop="storeName" label="门店" />
       <el-table-column prop="name" label="名称" />
+      <el-table-column label="方向" width="110">
+        <template #default="{ row }">{{ row.direction === "EXIT" ? "出店闸机" : "进店闸机" }}</template>
+      </el-table-column>
       <el-table-column prop="deviceSn" label="设备号" />
       <el-table-column prop="firmware" label="固件" width="120" />
       <el-table-column label="在线" width="80">
@@ -51,6 +60,12 @@
         </el-form-item>
         <el-form-item label="名称"><el-input v-model="edit.name" /></el-form-item>
         <el-form-item label="设备号"><el-input v-model="edit.deviceSn" /></el-form-item>
+        <el-form-item label="方向">
+          <el-select v-model="edit.direction" style="width: 100%">
+            <el-option label="进店闸机" value="ENTRY" />
+            <el-option label="出店闸机" value="EXIT" />
+          </el-select>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="editVisible = false">取消</el-button>
@@ -61,8 +76,13 @@
     <h2 v-if="session.role === 'MASTER'">模拟验码</h2>
     <el-form v-if="session.role === 'MASTER'" :inline="true" @submit.prevent="simulate">
       <el-form-item label="设备">
-        <el-select v-model="sim.sn" style="width: 180px">
-          <el-option v-for="row in rows" :key="row.deviceSn" :label="row.name" :value="row.deviceSn" />
+        <el-select v-model="sim.sn" style="width: 220px">
+          <el-option
+            v-for="row in rows"
+            :key="row.deviceSn"
+            :label="`${row.name}（${row.direction === 'EXIT' ? '出店' : '进店'}）`"
+            :value="row.deviceSn"
+          />
         </el-select>
       </el-form-item>
       <el-form-item label="会员编号"><el-input v-model="sim.memberNo" /></el-form-item>
@@ -84,6 +104,7 @@ interface Device {
   storeName: string;
   deviceSn: string;
   name: string;
+  direction: string;
   status: string;
   online: boolean;
   secret: string | null;
@@ -97,8 +118,8 @@ interface Device {
 const session = useSessionStore();
 const stores = ref<{ id: string; name: string }[]>([]);
 const rows = ref<Device[]>([]);
-const form = reactive({ storeId: "", name: "", deviceSn: "" });
-const edit = reactive({ id: "", storeId: "", name: "", deviceSn: "" });
+const form = reactive({ storeId: "", name: "", deviceSn: "", direction: "ENTRY" });
+const edit = reactive({ id: "", storeId: "", name: "", deviceSn: "", direction: "ENTRY" });
 const editVisible = ref(false);
 const sim = reactive({ sn: "", memberNo: "" });
 const simResult = ref("");
@@ -122,6 +143,7 @@ async function create() {
   await http.post("/api/admin/gates", form);
   form.name = "";
   form.deviceSn = "";
+  form.direction = "ENTRY";
   ElMessage.success("已登记");
   await load();
 }
@@ -131,6 +153,7 @@ function openEdit(row: Device) {
   edit.storeId = row.storeId;
   edit.name = row.name;
   edit.deviceSn = row.deviceSn;
+  edit.direction = row.direction === "EXIT" ? "EXIT" : "ENTRY";
   editVisible.value = true;
 }
 
@@ -143,6 +166,7 @@ async function saveEdit() {
     storeId: edit.storeId,
     name: edit.name,
     deviceSn: edit.deviceSn,
+    direction: edit.direction,
   });
   editVisible.value = false;
   ElMessage.success("已保存");
@@ -150,7 +174,7 @@ async function saveEdit() {
 }
 
 async function remove(row: Device) {
-  await ElMessageBox.confirm(`确定删除闸机「${row.name}」？进店记录会保留，同步任务会清除。`, "删除闸机", {
+  await ElMessageBox.confirm(`确定删除闸机「${row.name}」？通行记录会保留，同步任务会清除。`, "删除闸机", {
     type: "warning",
   });
   await http.delete(`/api/admin/gates/${row.id}`);

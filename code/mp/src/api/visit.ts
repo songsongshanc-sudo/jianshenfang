@@ -55,5 +55,6 @@ export function refundVisit() {
 }
 
 export function mockVisitPay(orderId: string) {
+  // 测试逻辑：参观押金的模拟支付。见 开发文档/前端测试逻辑-待删除.md
   return request({ url: `/api/mp/visit/orders/${orderId}/mock-pay`, method: "POST" });
 }

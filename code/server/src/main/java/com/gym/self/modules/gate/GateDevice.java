@@ -16,6 +16,8 @@ public class GateDevice {
     private String deviceSn;
     private String secret;
     private String name;
+    /** ENTRY=进店闸机 EXIT=出店闸机 */
+    private String direction;
     private String status;
     private LocalDateTime lastBeatAt;
     private String token;

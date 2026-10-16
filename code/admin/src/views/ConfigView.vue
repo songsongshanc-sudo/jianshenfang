@@ -12,6 +12,10 @@
       <el-form-item label="未支付超时（分钟）">
         <el-input v-model="form.orderExpireMinutes" />
       </el-form-item>
+      <el-form-item label="隐私指引链接">
+        <el-input v-model="privacyUrl" placeholder="https://" />
+      </el-form-item>
+      <el-button @click="copyPrivacy">复制链接</el-button>
       <el-button type="primary" native-type="submit">保存</el-button>
     </el-form>
   </div>
@@ -29,6 +33,7 @@ interface ConfigBody {
 }
 
 const loaded = ref(false);
+const privacyUrl = ref("");
 const form = reactive({
   entryDebounceSeconds: "15",
   onlineWindowMinutes: "90",
@@ -40,6 +45,8 @@ async function load() {
   form.entryDebounceSeconds = String(response.data.data.entryDebounceSeconds);
   form.onlineWindowMinutes = String(response.data.data.onlineWindowMinutes);
   form.orderExpireMinutes = String(response.data.data.orderExpireMinutes);
+  const privacy = await http.get<ApiBody<{ url: string }>>("/api/admin/privacy-url");
+  privacyUrl.value = privacy.data.data.url || "";
   loaded.value = true;
 }
 
@@ -49,7 +56,17 @@ async function save() {
     onlineWindowMinutes: Number(form.onlineWindowMinutes),
     orderExpireMinutes: Number(form.orderExpireMinutes)
   });
+  await http.put("/api/admin/privacy-url", { url: privacyUrl.value.trim() });
   ElMessage.success("已保存");
+}
+
+async function copyPrivacy() {
+  if (!privacyUrl.value.trim()) {
+    ElMessage.warning("请先填写链接");
+    return;
+  }
+  await navigator.clipboard.writeText(privacyUrl.value.trim());
+  ElMessage.success("已复制");
 }
 
 onMounted(load);

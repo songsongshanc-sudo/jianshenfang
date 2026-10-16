@@ -1,7 +1,7 @@
 <template>
   <div>
     <h1>参观卡</h1>
-    <p class="lead">押金/时长等全局配置。用户购卡时绑定选中门店，只能去该店刷脸参观一次；同店再次刷脸视为离店。按时离店退回，超时扣除。</p>
+    <p class="lead">押金/时长等全局配置。用户购卡时绑定选中门店；从进店闸机入场开始计时，从出店闸机离场。按时离店退回，超时扣除。</p>
 
     <el-form v-if="loaded && isMaster" label-width="140px" style="max-width: 640px" @submit.prevent="save">
       <el-form-item label="开启参观">

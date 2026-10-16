@@ -22,6 +22,9 @@ public class GymUser {
     private String registerStatus;
     private LocalDateTime registeredAt;
     private String status;
+    private Long createdStoreId;
+    private String inviteCode;
+    private Integer inviteFail;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

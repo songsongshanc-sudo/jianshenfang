@@ -25,6 +25,35 @@ public class MpAuthController {
         this.mpAuthService = mpAuthService;
     }
 
+    @PostMapping("/auth/enter")
+    public ApiResponse<MpAuthService.EnterView> enter(@Valid @RequestBody CodeRequest request) {
+        return ApiResponse.ok(mpAuthService.enter(request.code()));
+    }
+
+    @PostMapping("/auth/sms")
+    public ApiResponse<Void> sms(@Valid @RequestBody SmsRequest request) {
+        mpAuthService.sendSms(request.phone());
+        return ApiResponse.ok(null);
+    }
+
+    @PostMapping("/auth/claim")
+    public ApiResponse<MpAuthService.LoginView> claim(@Valid @RequestBody ClaimRequest request) {
+        return ApiResponse.ok(mpAuthService.claim(request.phone(), request.inviteCode()));
+    }
+
+    @PostMapping("/auth/register")
+    public ApiResponse<MpAuthService.LoginView> register(@Valid @RequestBody RegisterRequest request) {
+        if (!Boolean.TRUE.equals(request.privacyAgreed())) {
+            throw BizException.badRequest("请先同意隐私指引");
+        }
+        return ApiResponse.ok(mpAuthService.register(request.name(), request.phone(), request.smsCode()));
+    }
+
+    @GetMapping(value = "/face/preview", produces = org.springframework.http.MediaType.IMAGE_JPEG_VALUE)
+    public byte[] facePreview() {
+        return mpAuthService.facePreview();
+    }
+
     @PostMapping("/auth/session")
     public ApiResponse<MpAuthService.SessionView> session(@Valid @RequestBody CodeRequest request) {
         return ApiResponse.ok(mpAuthService.session(request.code()));
@@ -99,6 +128,16 @@ public class MpAuthController {
     }
 
     public record FaceRequest(@NotBlank String objectKey) {
+    }
+
+    public record SmsRequest(@NotBlank String phone) {
+    }
+
+    public record RegisterRequest(@NotBlank String name, @NotBlank String phone, @NotBlank String smsCode,
+                                  Boolean privacyAgreed) {
+    }
+
+    public record ClaimRequest(@NotBlank String phone, @NotBlank String inviteCode) {
     }
 
     public record ProfileRequest(@Size(max = 32) String nickname) {

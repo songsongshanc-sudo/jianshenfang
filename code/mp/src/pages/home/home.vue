@@ -30,7 +30,7 @@
         <text class="visit-title">{{ visitWarn ? "即将超时，请尽快离店" : "参观进行中" }}</text>
         <text class="visit-sub">剩余 {{ visitRemainText }}{{ visitMine.storeName ? ` · ${visitMine.storeName}` : "" }}</text>
       </view>
-      <text class="visit-tip">再次刷脸离店</text>
+      <text class="visit-tip">请从出店闸机离店</text>
     </view>
     <view v-else-if="visitMine?.status === 'UNUSED'" class="visit-bar idle">
       <view>
@@ -47,7 +47,7 @@
     </view>
     <view v-else-if="visitMine?.status === 'TIMEOUT_FORFEIT'" class="visit-bar warn">
       <text class="visit-title">已超时，押金已扣除</text>
-      <text class="visit-sub">请刷脸离店</text>
+      <text class="visit-sub">请从出店闸机离店</text>
     </view>
 
     <view v-if="noticeList.length" class="notice">
@@ -170,6 +170,7 @@ import { computed, onUnmounted, ref } from "vue";
 import { onShow } from "@dcloudio/uni-app";
 import { storeToRefs } from "pinia";
 import ContactSheet from "../../components/ContactSheet.vue";
+import { silentEnter } from "../../api/auth";
 import {
   banners,
   cards,
@@ -483,6 +484,9 @@ async function submitGroupon() {
 }
 
 onShow(async () => {
+  if (uni.getStorageSync("mpTokenType") !== "ACCESS") {
+    await silentEnter();
+  }
   await locate();
   await load();
 });

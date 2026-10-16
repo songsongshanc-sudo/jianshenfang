@@ -22,7 +22,7 @@
     },
     {
       "path": "pages/login/login",
-      "style": { "navigationBarTitleText": "登录" }
+      "style": { "navigationBarTitleText": "会员注册" }
     },
     {
       "path": "pages/face/face",
@@ -92,7 +92,10 @@
             "navigationBarTextStyle": "white"
           }
         },
-        { "path": "pages/lessons/lessons", "style": { "navigationBarTitleText": "我的课程" } }
+        { "path": "pages/lessons/lessons", "style": { "navigationBarTitleText": "我的课程" } },
+        { "path": "pages/book/book", "style": { "navigationBarTitleText": "预约选座" } },
+        { "path": "pages/booking/booking", "style": { "navigationBarTitleText": "预约详情" } },
+        { "path": "pages/coach-bookings/coach-bookings", "style": { "navigationBarTitleText": "预约处理" } }
       ]
     }
   ],

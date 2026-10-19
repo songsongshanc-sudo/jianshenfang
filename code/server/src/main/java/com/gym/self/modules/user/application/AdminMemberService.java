@@ -69,7 +69,7 @@ public class AdminMemberService {
                 SELECT u.id, u.nickname, u.phone, u.member_no, u.created_store_id, u.openid, u.invite_code, s.name AS store_name
                 FROM `user` u
                 LEFT JOIN store s ON s.id = u.created_store_id
-                WHERE u.phone IS NOT NULL AND u.phone <> '' AND u.register_status = 'ACTIVE'
+                WHERE u.register_status = 'ACTIVE' AND u.member_no IS NOT NULL AND u.member_no <> ''
                 """);
         List<Object> args = new ArrayList<>();
         if (scoped != null) {
@@ -136,7 +136,7 @@ public class AdminMemberService {
         enrollFace(user, photo);
         grant(storeId, user.getId(), cardIds, packIds);
         adminOpLog.record(actor, storeId, user.getId(), user.getId(), "新增会员",
-                "姓名 " + realName + "，手机号 " + mobile + "，会员编号 " + user.getMemberNo() + "，已生成邀请码");
+                "姓名 " + realName + "，手机号 " + mobile + "，会员编号 " + user.getMemberNo() + "，已生成绑定码");
         return Map.of("id", String.valueOf(user.getId()), "inviteCode", user.getInviteCode());
     }
 
@@ -149,9 +149,9 @@ public class AdminMemberService {
                 code, timeProvider.now(), userId);
         Long storeId = actor.storeId() != null ? actor.storeId() : user.getCreatedStoreId();
         String detail = bound
-                ? "会员 " + display(user) + " 已解除原微信，需用新邀请码重新绑定"
-                : "会员 " + display(user) + " 已更换邀请码，旧码失效";
-        adminOpLog.record(actor, storeId, userId, userId, "重新生成邀请码", detail);
+                ? "会员 " + display(user) + " 已解除原微信，需用新绑定码重新绑定"
+                : "会员 " + display(user) + " 已更换绑定码，旧码失效";
+        adminOpLog.record(actor, storeId, userId, userId, "重新生成绑定码", detail);
         return code;
     }
 
@@ -184,7 +184,7 @@ public class AdminMemberService {
         if (taken != null && taken > 0) {
             throw BizException.rejected("该手机号已是其他会员");
         }
-        String previous = user.getPhone();
+        String previous = user.getPhone() == null || user.getPhone().isBlank() ? "未填" : user.getPhone();
         user.setPhone(mobile);
         user.setUpdatedAt(timeProvider.now());
         userMapper.updateById(user);
@@ -197,7 +197,7 @@ public class AdminMemberService {
     public void grantMore(AdminPrincipal actor, long userId, long storeId, List<Long> cardIds, List<Long> packIds) {
         StoreScope.requireStoreAccess(actor, storeId);
         GymUser user = userMapper.selectById(userId);
-        if (user == null || user.getPhone() == null) {
+        if (user == null || !"ACTIVE".equals(user.getRegisterStatus())) {
             throw BizException.badRequest("会员不存在");
         }
         if ((cardIds == null || cardIds.isEmpty()) && (packIds == null || packIds.isEmpty())) {
@@ -284,7 +284,7 @@ public class AdminMemberService {
 
     private GymUser mustVisible(AdminPrincipal actor, long userId) {
         GymUser user = userMapper.selectById(userId);
-        if (user == null || user.getPhone() == null || !"ACTIVE".equals(user.getRegisterStatus())) {
+        if (user == null || !"ACTIVE".equals(user.getRegisterStatus()) || user.getMemberNo() == null) {
             throw BizException.badRequest("会员不存在");
         }
         if (actor.master()) {
@@ -330,6 +330,10 @@ public class AdminMemberService {
         }
     }
 
+    public String newInviteCode() {
+        return nextInviteCode();
+    }
+
     private String nextInviteCode() {
         for (int attempt = 0; attempt < 8; attempt++) {
             StringBuilder code = new StringBuilder(8);
@@ -342,7 +346,7 @@ public class AdminMemberService {
                 return value;
             }
         }
-        throw BizException.badRequest("邀请码生成失败，请重试");
+        throw BizException.badRequest("绑定码生成失败，请重试");
     }
 
     private static String requireName(String name) {

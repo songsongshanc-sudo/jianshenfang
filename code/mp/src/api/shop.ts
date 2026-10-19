@@ -46,14 +46,6 @@ export function redeemGroupon(storeId: string, platform: string, code: string) {
   return request<{ id: string }>({ url: "/api/mp/groupon/redeem", method: "POST", data: { storeId, platform, code } });
 }
 
-export function reviews(platform: string) {
-  return request<unknown[]>({ url: `/api/mp/reviews?platform=${platform}`, method: "GET" });
-}
-
-export function studentStatus() {
-  return request<{ status: string }>({ url: "/api/mp/student", method: "GET" });
-}
-
 export interface CoachListItem {
   id: string;
   name: string;

@@ -39,7 +39,6 @@
         <el-menu-item v-if="session.role === 'MASTER'" index="/equipment">器械</el-menu-item>
         <el-menu-item v-if="session.role === 'MASTER'" index="/franchise">加盟</el-menu-item>
         <el-menu-item index="/messages">消息</el-menu-item>
-        <el-menu-item v-if="session.role === 'MASTER'" index="/violations">违规</el-menu-item>
       </el-menu>
     </el-aside>
     <el-container>
@@ -94,8 +93,7 @@ const titles: Record<string, string> = {
   "/lost": "失物",
   "/equipment": "器械",
   "/franchise": "加盟",
-  "/messages": "消息",
-  "/violations": "违规"
+  "/messages": "消息"
 };
 
 const title = computed(() => titles[route.path] || "管理端");

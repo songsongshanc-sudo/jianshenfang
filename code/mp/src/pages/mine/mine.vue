@@ -5,10 +5,10 @@
         <view class="avatar">{{ initial }}</view>
         <view class="who" @click="goProfileOrLogin">
           <text class="nick">{{ profile ? (profile.nickname || "会员") : "欢迎来到健身房" }} <text v-if="profile" class="arrow">›</text></text>
-          <text class="sub">{{ profile ? `已陪伴您 ${profile.companionDays} 天` : "新用户注册，或用门店给的邀请码登录" }}</text>
+          <text class="sub">{{ profile ? `已陪伴您 ${profile.companionDays} 天` : "新用户注册，或用门店给的绑定码登录" }}</text>
           <text v-if="profile" class="sub">会员编号：{{ profile.memberNo || "—" }}</text>
         </view>
-        <view v-if="profile" class="gear-wrap" @click="settings = true">
+        <view v-if="profile" class="gear-wrap" @click="goProfile">
           <image class="gear" src="/static/icon/sliders.png" mode="aspectFit" />
         </view>
       </view>
@@ -17,7 +17,7 @@
       <text v-if="profile?.faceSync === 'FAILED'" class="remain">人脸同步失败，请联系门店重试</text>
       <view v-if="!profile" class="hero-actions">
         <button class="hero-btn" @click="goLogin">立即注册</button>
-        <button class="hero-btn ghost" @click="goInvite">邀请码登录</button>
+        <button class="hero-btn ghost" @click="goInvite">绑定码登录</button>
       </view>
     </view>
 
@@ -65,7 +65,7 @@
           <text>系统消息</text>
         </view>
         <view class="cell" @click="requireMember(orders)"><view class="bubble"><image class="ico" src="/static/icon/order.png" mode="aspectFit" /></view><text>会员订单</text></view>
-        <view class="cell" @click="requireMember(() => go('/package-service/pages/review/review'))"><view class="bubble"><image class="ico" src="/static/icon/star.png" mode="aspectFit" /></view><text>好评赠卡</text></view>
+        <view class="cell" @click="requireMember(agreement)"><view class="bubble"><image class="ico" src="/static/icon/info.png" mode="aspectFit" /></view><text>会员协议</text></view>
         <view class="cell" @click="requireMember(goProfile)"><view class="bubble"><image class="ico" src="/static/icon/camera.png" mode="aspectFit" /></view><text>会员资料</text></view>
       </view>
     </view>
@@ -76,7 +76,6 @@
         <view class="cell" @click="requireMember(() => go('/package-service/pages/complaint/complaint'))"><view class="bubble"><image class="ico" src="/static/icon/chat.png" mode="aspectFit" /></view><text>投诉建议</text></view>
         <view class="cell" @click="requireMember(() => go('/package-service/pages/lost/lost'))"><view class="bubble"><image class="ico" src="/static/icon/box.png" mode="aspectFit" /></view><text>失物招领</text></view>
         <view class="cell" @click="requireMember(() => go('/package-service/pages/equipment/equipment'))"><view class="bubble"><image class="ico" src="/static/icon/dumbbell.png" mode="aspectFit" /></view><text>器械指导</text></view>
-        <view class="cell" @click="requireMember(() => { void student(); })"><view class="bubble"><image class="ico" src="/static/icon/cap.png" mode="aspectFit" /></view><text>学生认证</text></view>
       </view>
     </view>
 
@@ -92,15 +91,6 @@
         <view class="cancel" @click="groupon = false">取消</view>
       </view>
     </view>
-    <view v-if="settings" class="mask" @click="settings = false">
-      <view class="sheet" @click.stop>
-        <text class="sheet-title">设置</text>
-        <view class="sheet-row" @click="goProfile">会员资料</view>
-        <view class="sheet-row" @click="agreement">会员协议</view>
-        <view class="sheet-row danger" @click="logout">退出登录</view>
-        <view class="cancel" @click="settings = false">取消</view>
-      </view>
-    </view>
   </view>
 </template>
 
@@ -108,7 +98,7 @@
 import { computed, ref } from "vue";
 import { onShow } from "@dcloudio/uni-app";
 import { me, type MeProfile } from "../../api/catalog";
-import { coachMe, redeemGroupon, studentStatus, unreadMessageCount } from "../../api/shop";
+import { coachMe, redeemGroupon, unreadMessageCount } from "../../api/shop";
 import { useCurrentStore } from "../../stores/currentStore";
 
 const profile = ref<MeProfile | null>(null);
@@ -116,7 +106,6 @@ const isCoach = ref(false);
 const unread = ref(0);
 const current = useCurrentStore();
 const groupon = ref(false);
-const settings = ref(false);
 const platforms = ["MEITUAN", "DOUYIN"];
 const platformLabels = ["美团", "抖音"];
 const platformIndex = ref(0);
@@ -168,7 +157,6 @@ function openGroupon() {
 }
 
 function goProfile() {
-  settings.value = false;
   uni.navigateTo({ url: "/pages/profile/profile" });
 }
 
@@ -204,13 +192,6 @@ function agreement() {
   uni.navigateTo({ url: "/package-card/pages/agreement/agreement" });
 }
 
-function logout() {
-  uni.removeStorageSync("mpToken");
-  uni.removeStorageSync("mpTokenType");
-  profile.value = null;
-  settings.value = false;
-}
-
 function onPlatform(event: { detail: { value: number } }) {
   platformIndex.value = Number(event.detail.value);
 }
@@ -223,11 +204,6 @@ async function submitGroupon() {
   await redeemGroupon(current.storeId, platforms[platformIndex.value], code.value);
   uni.showToast({ title: "核销成功", icon: "none" });
   groupon.value = false;
-}
-
-async function student() {
-  const status = await studentStatus();
-  uni.showToast({ title: status.status === "UNVERIFIED" ? "未认证" : status.status, icon: "none" });
 }
 </script>
 
@@ -322,6 +298,5 @@ async function student() {
 input { margin-top: 16rpx; background: #f5f6f8; }
 .sheet-btn { margin-top: 20rpx; }
 .sheet-row { padding: 28rpx 4rpx; border-bottom: 1px solid #eceff3; font-size: 30rpx; }
-.danger { color: #dc2626; }
 .cancel { margin-top: 12rpx; padding: 24rpx; text-align: center; color: #8a8f98; }
 </style>

@@ -4,6 +4,7 @@ import com.gym.self.common.api.ApiResponse;
 import com.gym.self.common.api.BizException;
 import com.gym.self.modules.adminuser.auth.CurrentAdmin;
 import com.gym.self.modules.user.application.AdminMemberService;
+import com.gym.self.modules.user.application.GateMemberImportService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,9 +22,11 @@ import java.util.Map;
 public class AdminMemberController {
 
     private final AdminMemberService adminMemberService;
+    private final GateMemberImportService gateMemberImportService;
 
-    public AdminMemberController(AdminMemberService adminMemberService) {
+    public AdminMemberController(AdminMemberService adminMemberService, GateMemberImportService gateMemberImportService) {
         this.adminMemberService = adminMemberService;
+        this.gateMemberImportService = gateMemberImportService;
     }
 
     @GetMapping("/api/admin/members")
@@ -37,6 +40,11 @@ public class AdminMemberController {
     public ApiResponse<Map<String, String>> create(@Valid @RequestBody CreateMember request) {
         return ApiResponse.ok(adminMemberService.create(CurrentAdmin.get(), parse(request.storeId()), request.name(),
                 request.phone(), request.faceBase64(), parseIds(request.cardIds()), parseIds(request.packIds())));
+    }
+
+    @PostMapping("/api/admin/members/import")
+    public ApiResponse<Map<String, Object>> importMembers(@Valid @RequestBody ImportRequest request) {
+        return ApiResponse.ok(gateMemberImportService.importFromGate(CurrentAdmin.get(), parse(request.deviceId())));
     }
 
     @PostMapping("/api/admin/members/{id}/invite")
@@ -103,6 +111,9 @@ public class AdminMemberController {
 
     public record CreateMember(@NotBlank String storeId, @NotBlank String name, @NotBlank String phone,
                                @NotBlank String faceBase64, List<String> cardIds, List<String> packIds) {
+    }
+
+    public record ImportRequest(@NotBlank String deviceId) {
     }
 
     public record GrantRequest(@NotBlank String storeId, List<String> cardIds, List<String> packIds) {

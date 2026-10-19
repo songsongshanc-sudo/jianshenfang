@@ -271,27 +271,27 @@ public class MpAuthService {
         String mobile = phone == null ? "" : phone.trim();
         String code = inviteCode == null ? "" : inviteCode.trim().toUpperCase().replace(" ", "");
         if (!mobile.matches("1\\d{10}") || !code.matches("[A-Z2-9]{8}")) {
-            throw BizException.badRequest("请填写手机号和 8 位邀请码");
+            throw BizException.badRequest("请填写手机号和 8 位绑定码");
         }
         if (unknownInviteFails.getOrDefault(mobile, 0) >= INVITE_LIMIT) {
-            throw BizException.rejected("邀请码已锁定，请联系门店重新生成");
+            throw BizException.rejected("绑定码已锁定，请联系门店重新生成");
         }
         GymUser target = userMapper.selectOne(new LambdaQueryWrapper<GymUser>().eq(GymUser::getPhone, mobile));
         if (target == null || !"ACTIVE".equals(target.getRegisterStatus())) {
             unknownInviteFails.merge(mobile, 1, Integer::sum);
-            throw BizException.rejected("手机号或邀请码不正确");
+            throw BizException.rejected("手机号或绑定码不正确");
         }
         int fails = target.getInviteFail() == null ? 0 : target.getInviteFail();
         if (fails >= INVITE_LIMIT) {
-            throw BizException.rejected("邀请码已锁定，请联系门店重新生成");
+            throw BizException.rejected("绑定码已锁定，请联系门店重新生成");
         }
         if (target.getInviteCode() == null || !target.getInviteCode().equals(code)) {
             target.setInviteFail(fails + 1);
             userMapper.updateById(target);
             if (fails + 1 >= INVITE_LIMIT) {
-                throw BizException.rejected("邀请码已锁定，请联系门店重新生成");
+                throw BizException.rejected("绑定码已锁定，请联系门店重新生成");
             }
-            throw BizException.rejected("手机号或邀请码不正确");
+            throw BizException.rejected("手机号或绑定码不正确");
         }
         if (target.getOpenid() != null && !target.getOpenid().isBlank()
                 && !target.getOpenid().equals(shell.getOpenid())) {
@@ -314,7 +314,7 @@ public class MpAuthService {
                 .set(GymUser::getInviteFail, 0)
                 .set(GymUser::getUpdatedAt, timeProvider.now()));
         if (updated == 0 && (target.getOpenid() == null || !target.getOpenid().equals(openid))) {
-            throw BizException.rejected("邀请码已失效，请联系门店重新生成");
+            throw BizException.rejected("绑定码已失效，请联系门店重新生成");
         }
         if (updated == 0) {
             clearInvite(target.getId());

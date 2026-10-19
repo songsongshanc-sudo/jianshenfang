@@ -46,10 +46,6 @@
             <image class="big-ico" src="/static/icon/dumbbell.png" mode="aspectFit" />
             <text>器械指导</text>
           </view>
-          <view class="big" @click="goService('/package-service/pages/review/review')">
-            <image class="big-ico" src="/static/icon/star.png" mode="aspectFit" />
-            <text>好评赠卡</text>
-          </view>
           <view class="big" @click="goVisits">
             <image class="big-ico" src="/static/icon/card.png" mode="aspectFit" />
             <text>健身记录</text>

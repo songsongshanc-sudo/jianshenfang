@@ -1,0 +1,1 @@
+ALTER TABLE `user` ALTER COLUMN member_no VARCHAR(32) NULL;

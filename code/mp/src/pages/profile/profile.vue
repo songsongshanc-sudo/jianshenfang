@@ -5,12 +5,12 @@
       <text class="value">{{ name || "—" }}</text>
       <text class="label">手机号</text>
       <text class="value">{{ phone || "—" }}</text>
-      <text class="hint">姓名和手机号注册后不能修改。</text>
+      <text class="hint">姓名和手机号不能在这里修改。如需修改，请到前台，由管理端修改。</text>
     </view>
     <view class="card">
       <text class="label">人脸照片</text>
       <image v-if="preview" class="preview" :src="preview" mode="aspectFill" />
-      <text class="hint">人脸用于闸机识别，不能更换。</text>
+      <text class="hint">人脸不能更换。</text>
     </view>
   </view>
 </template>

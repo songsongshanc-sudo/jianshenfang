@@ -52,8 +52,7 @@ export const router = createRouter({
         { path: "groupon", component: OpsView },
         { path: "coaches", component: CoachesView },
         { path: "franchise", component: OpsView },
-        { path: "messages", component: MessagesView },
-        { path: "violations", component: OpsView }
+        { path: "messages", component: MessagesView }
       ]
     }
   ]
@@ -67,7 +66,7 @@ router.beforeEach((to) => {
   if (to.path === "/login" && session.token) {
     return "/";
   }
-  const masterOnly = ["/stores", "/accounts", "/banners", "/notices", "/agreements", "/service-guides", "/configs", "/equipment", "/franchise", "/violations"];
+  const masterOnly = ["/stores", "/accounts", "/banners", "/notices", "/agreements", "/service-guides", "/configs", "/equipment", "/franchise"];
   if (session.role === "STORE" && masterOnly.includes(to.path)) {
     return "/";
   }

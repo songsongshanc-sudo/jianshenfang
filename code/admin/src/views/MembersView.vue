@@ -1,7 +1,7 @@
 <template>
   <div>
     <h1>会员</h1>
-    <p class="lead">手工录入的会员会记成已支付订单，并生成一次性邀请码。会员用手机号和邀请码绑定微信后，邀请码失效。姓名和手机号可在编辑里修改，人脸不能改。</p>
+    <p class="lead">手工录入的会员会记成已支付订单，并生成一次性绑定码。会员用手机号和绑定码绑定微信后，绑定码失效。姓名和手机号可在编辑里修改，人脸不能改。</p>
     <el-form :inline="true" class="toolbar">
       <el-form-item v-if="session.role === 'MASTER'" label="门店">
         <el-select v-model="filter.storeId" clearable placeholder="全部" style="width: 180px" @change="load">
@@ -12,13 +12,16 @@
       <el-form-item label="手机号"><el-input v-model="filter.phone" clearable @keyup.enter="load" /></el-form-item>
       <el-form-item><el-button type="primary" @click="load">查询</el-button></el-form-item>
       <el-form-item><el-button @click="openCreate">录入会员</el-button></el-form-item>
+      <el-form-item><el-button @click="openImport">导入旧会员</el-button></el-form-item>
     </el-form>
 
     <el-table :data="rows">
-      <el-table-column prop="name" label="姓名" width="120" />
+      <el-table-column label="姓名" width="120">
+        <template #default="{ row }">{{ row.name || "未填" }}</template>
+      </el-table-column>
       <el-table-column prop="phone" label="手机号" width="140" />
       <el-table-column prop="memberNo" label="会员编号" width="120" />
-      <el-table-column label="微信" min-width="180">
+      <el-table-column label="绑定码" min-width="180">
         <template #default="{ row }">
           <span v-if="row.wechatBound">已绑定</span>
           <span v-else-if="row.inviteCode">{{ row.inviteCode }}</span>
@@ -63,6 +66,23 @@
       </template>
     </el-dialog>
 
+    <el-dialog v-model="importOpen" title="导入旧会员" width="560px">
+      <p class="lead">选择一台在线闸机。按闸机上的人员编号导入照片和到期时间，不重新下发人脸。姓名、手机号没有时，导入后在列表里补，再把绑定码交给会员。</p>
+      <el-select v-model="importDeviceId" placeholder="选择闸机" style="width: 100%">
+        <el-option
+          v-for="gate in gates"
+          :key="gate.id"
+          :label="`${gate.storeName} · ${gate.name}${gate.online ? '' : '（离线）'}`"
+          :value="gate.id"
+          :disabled="!gate.online || gate.status !== 'ENABLED'"
+        />
+      </el-select>
+      <template #footer>
+        <el-button @click="importOpen = false">取消</el-button>
+        <el-button type="primary" :loading="importing" @click="importMembers">开始导入</el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="grantOpen" title="编辑会员" width="640px" destroy-on-close>
       <p class="lead">人脸不能改。姓名和手机号修改后会记入系统操作。</p>
       <el-form label-width="90px">
@@ -74,13 +94,13 @@
           <el-input v-model="grantPhone" maxlength="11" style="width: 240px" />
           <el-button style="margin-left: 12px" @click="savePhone">保存手机号</el-button>
         </el-form-item>
-        <el-form-item label="邀请码">
+        <el-form-item label="绑定码">
           <template v-if="grantBound">已绑定微信。重新生成会解除当前微信，旧码同时失效。</template>
           <template v-else-if="grantInvite">{{ grantInvite }}。交给会员后，绑定成功即失效。</template>
-          <template v-else>还没有邀请码。</template>
+          <template v-else>还没有绑定码。</template>
           <div style="margin-top: 8px">
             <el-button @click="copyInvite" :disabled="!grantInvite || grantBound">复制</el-button>
-            <el-button style="margin-left: 8px" @click="renewInvite">{{ grantInvite || grantBound ? "重新生成" : "生成邀请码" }}</el-button>
+            <el-button style="margin-left: 8px" @click="renewInvite">{{ grantInvite || grantBound ? "重新生成" : "生成绑定码" }}</el-button>
           </div>
         </el-form-item>
         <el-form-item label="门店">
@@ -128,6 +148,10 @@ const grantName = ref("");
 const grantPhone = ref("");
 const grantInvite = ref("");
 const grantBound = ref(false);
+const importOpen = ref(false);
+const importing = ref(false);
+const importDeviceId = ref("");
+const gates = ref<{ id: string; name: string; storeName: string; online: boolean; status: string }[]>([]);
 
 onMounted(async () => {
   const storeRes = await http.get<ApiBody<{ id: string; name: string }[]>>("/api/admin/stores");
@@ -185,12 +209,41 @@ function onFile(event: Event) {
   reader.readAsDataURL(file);
 }
 
+async function openImport() {
+  const response = await http.get<ApiBody<{ id: string; name: string; storeName: string; online: boolean; status: string }[]>>("/api/admin/gates");
+  gates.value = response.data.data;
+  importDeviceId.value = gates.value.find((gate) => gate.online && gate.status === "ENABLED")?.id || "";
+  importOpen.value = true;
+}
+
+async function importMembers() {
+  if (!importDeviceId.value) {
+    ElMessage.warning("请选择一台在线闸机");
+    return;
+  }
+  importing.value = true;
+  try {
+    const response = await http.post<ApiBody<{ imported: number; updated: number; skipped: number; notes: string[] }>>(
+      "/api/admin/members/import",
+      { deviceId: importDeviceId.value },
+      { timeout: 600000 },
+    );
+    const result = response.data.data;
+    const extra = result.notes?.length ? ` ${result.notes.join("；")}` : "";
+    ElMessage.success(`新增 ${result.imported} 人，补全 ${result.updated} 人，跳过 ${result.skipped} 人。${extra}`);
+    importOpen.value = false;
+    await load();
+  } finally {
+    importing.value = false;
+  }
+}
+
 async function create() {
   const response = await http.post<ApiBody<{ id: string; inviteCode: string }>>("/api/admin/members", form);
   const code = response.data.data.inviteCode;
   createOpen.value = false;
   await load();
-  await ElMessageBox.alert(`邀请码 ${code}。请交给会员，在小程序用手机号和邀请码绑定微信。绑定后邀请码失效。`, "已录入");
+  await ElMessageBox.alert(`绑定码 ${code}。请交给会员，在小程序用手机号和绑定码绑定微信。绑定后绑定码失效。`, "已录入");
 }
 
 function openGrant(row: Record<string, any>) {
@@ -218,12 +271,12 @@ async function copyInvite() {
 
 async function renewInvite() {
   if (grantBound.value) {
-    await ElMessageBox.confirm("重新生成后，当前微信将不能再直接进入，会员需要用新邀请码重新绑定。", "解除微信绑定");
+    await ElMessageBox.confirm("重新生成后，当前微信将不能再直接进入，会员需要用新绑定码重新绑定。", "解除微信绑定");
   }
   const response = await http.post<ApiBody<{ inviteCode: string }>>(`/api/admin/members/${grant.userId}/invite`);
   grantInvite.value = response.data.data.inviteCode;
   grantBound.value = false;
-  ElMessage.success("已生成新邀请码");
+  ElMessage.success("已生成新绑定码");
   await load();
 }
 

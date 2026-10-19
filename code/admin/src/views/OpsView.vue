@@ -231,8 +231,7 @@ const title = computed(() => ({
   "/groupon": "团购券",
   "/coaches": "教练与课程",
   "/franchise": "加盟",
-  "/messages": "站内消息",
-  "/violations": "违规处理"
+  "/messages": "站内消息"
 }[route.path] || "管理"));
 
 const lead = computed(() => ({
@@ -240,18 +239,14 @@ const lead = computed(() => ({
   "/groupon": "先选择门店和对应卡种。券码只存哈希。用户在小程序提交后，匹配到规则就按这张卡开通会员。美团和抖音平台接口还没接。",
   "/coaches": "先选择门店。不选已有教练时会按姓名和手机号新建。买课增加课时，不会开通进店会员。",
   "/franchise": "页面文案由总账号配置。申请记录只在这里查看。",
-  "/messages": "只做站内已读，没有运营推送规则。",
-  "/violations": "扣天数会改会员结束时间，并写入调整记录。勾选停用则立即结束会员。"
+  "/messages": "只做站内已读，没有运营推送规则。"
 }[route.path] || ""));
 
 const fields = computed(() => {
   if (route.path === "/messages") return [
     { key: "userId", label: "用户编号" }, { key: "title", label: "标题" }, { key: "content", label: "内容" }
   ];
-  return [
-    { key: "membershipId", label: "会员记录编号" }, { key: "deltaDays", label: "扣减天数" },
-    { key: "revoke", label: "停用填1" }, { key: "reason", label: "原因" }
-  ];
+  return [];
 });
 
 const columnLabels: Record<string, string> = {
@@ -501,13 +496,6 @@ async function save() {
     await http.post("/api/admin/franchise", form);
   } else if (route.path === "/messages") {
     await http.post("/api/admin/messages", form);
-  } else {
-    await http.post("/api/admin/violations", {
-      membershipId: form.membershipId,
-      deltaDays: -Math.abs(Number(form.deltaDays || 0)),
-      revoke: form.revoke === "1",
-      reason: form.reason
-    });
   }
   ElMessage.success("已保存");
   if (route.path === "/franchise") {

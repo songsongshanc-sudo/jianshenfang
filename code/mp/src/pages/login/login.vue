@@ -4,24 +4,24 @@
       <view class="hero-top">
         <view class="avatar">会</view>
         <view class="who">
-          <text class="nick">{{ mode === "invite" ? "邀请码登录" : "会员注册" }}</text>
-          <text class="sub">{{ mode === "invite" ? "门店已录入的会员，填写手机号和邀请码" : "填写姓名和手机号，并完成人脸核验" }}</text>
-          <text class="sub">{{ mode === "invite" ? "绑定后只用微信进入，邀请码随即失效" : "注册后不能修改" }}</text>
+          <text class="nick">{{ mode === "invite" ? "绑定码登录" : "会员注册" }}</text>
+          <text class="sub">{{ mode === "invite" ? "门店已录入的会员，填写手机号和绑定码" : "填写姓名和手机号，并完成人脸核验" }}</text>
+          <text class="sub">{{ mode === "invite" ? "绑定后只用微信进入，绑定码随即失效" : "注册后不能修改" }}</text>
         </view>
       </view>
     </view>
 
     <view class="modes">
       <view class="mode" :class="{ on: mode === 'register' }" @click="mode = 'register'">新用户注册</view>
-      <view class="mode" :class="{ on: mode === 'invite' }" @click="mode = 'invite'">邀请码登录</view>
+      <view class="mode" :class="{ on: mode === 'invite' }" @click="mode = 'invite'">绑定码登录</view>
     </view>
 
     <template v-if="mode === 'invite'">
       <view class="card">
         <text class="label tight">手机号</text>
         <input v-model="phone" type="number" maxlength="11" placeholder="11 位手机号" />
-        <text class="label">邀请码</text>
-        <input v-model="inviteCode" maxlength="8" placeholder="8 位邀请码" />
+        <text class="label">绑定码</text>
+        <input v-model="inviteCode" maxlength="8" placeholder="8 位绑定码" />
       </view>
       <button class="primary" :class="{ wait: !canClaim }" @click="submitInvite">登录并绑定微信</button>
       <view class="cancel" @click="leave">暂不登录，先看看</view>
@@ -232,7 +232,7 @@ async function submitInvite() {
     return;
   }
   if (!/^[A-Z2-9]{8}$/.test(inviteText.value)) {
-    uni.showToast({ title: "请填写 8 位邀请码", icon: "none" });
+    uni.showToast({ title: "请填写 8 位绑定码", icon: "none" });
     return;
   }
   const data = await claimMember({ phone: phoneText.value, inviteCode: inviteText.value });

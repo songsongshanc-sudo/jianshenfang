@@ -264,7 +264,7 @@ public class ShopController {
     @GetMapping("/api/admin/coaches")
     public ApiResponse<List<Map<String, Object>>> adminCoaches(@RequestParam String storeId) {
         StoreScopeCheck.masterOrOwn(CurrentAdmin.get(), parse(storeId));
-        List<Map<String, Object>> rows = shopService.coaches(parse(storeId));
+        List<Map<String, Object>> rows = shopService.adminCoaches(parse(storeId));
         rows.forEach(row -> row.put("id", String.valueOf(row.get("id"))));
         return ApiResponse.ok(rows);
     }

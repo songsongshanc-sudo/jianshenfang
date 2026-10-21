@@ -5,7 +5,7 @@
         <view class="avatar">会</view>
         <view class="who">
           <text class="nick">{{ mode === "invite" ? "绑定码登录" : "会员注册" }}</text>
-          <text class="sub">{{ mode === "invite" ? "门店已录入的会员，填写手机号和绑定码" : "填写姓名和手机号，并完成人脸核验" }}</text>
+          <text class="sub">{{ mode === "invite" ? "门店已录入的会员或教练，填写手机号和绑定码，不用注册" : "填写姓名和手机号，并完成人脸核验" }}</text>
           <text class="sub">{{ mode === "invite" ? "绑定后只用微信进入，绑定码随即失效" : "注册后不能修改" }}</text>
         </view>
       </view>

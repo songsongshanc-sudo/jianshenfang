@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.gym.self.common.api.BizException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
@@ -16,13 +17,20 @@ public class RemoteWxAuth implements WxAuthPort {
     private static final Logger log = LoggerFactory.getLogger(RemoteWxAuth.class);
 
     private final WxMpAccessToken wxMpAccessToken;
+    private final boolean h5Login;
 
-    public RemoteWxAuth(WxMpAccessToken wxMpAccessToken) {
+    public RemoteWxAuth(WxMpAccessToken wxMpAccessToken,
+                        @Value("${gym.wx.h5-login:false}") boolean h5Login) {
         this.wxMpAccessToken = wxMpAccessToken;
+        this.h5Login = h5Login;
     }
 
     @Override
     public Session exchange(String code) {
+        if (h5Login && code != null && code.matches("h5[A-Za-z0-9]{8,40}")) {
+            String openid = "h5" + code.substring(2);
+            return new Session(openid, "h5-session");
+        }
         wxMpAccessToken.ensureConfigured();
         if (code == null || code.isBlank()) {
             throw BizException.badRequest("微信登录凭证不正确");

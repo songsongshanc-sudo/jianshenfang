@@ -221,6 +221,11 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
+    location /uploads/ {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+    }
+
     # 前端路由（刷新页面不 404）
     location / {
         try_files $uri $uri/ /index.html;

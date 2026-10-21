@@ -11,8 +11,11 @@ import com.gym.self.modules.card.domain.MembershipMapper;
 import com.gym.self.modules.order.application.CourseGrant;
 import com.gym.self.modules.order.application.OrderService;
 import com.gym.self.modules.order.domain.TradeOrder;
+import com.gym.self.modules.user.application.AdminMemberService;
+import com.gym.self.modules.user.application.MemberNoService;
 import com.gym.self.modules.user.domain.GymUser;
 import com.gym.self.modules.user.domain.GymUserMapper;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,11 +41,14 @@ public class ShopService implements CourseGrant {
     private final OrderService orderService;
     private final GymUserMapper userMapper;
     private final MembershipMapper membershipMapper;
+    private final AdminMemberService adminMemberService;
+    private final MemberNoService memberNoService;
     private final Map<Long, ArrayDeque<Instant>> grouponHits = new ConcurrentHashMap<>();
     private final Map<String, LessonToken> lessonTokens = new ConcurrentHashMap<>();
 
     public ShopService(JdbcTemplate jdbc, Snowflake snowflake, TimeProvider timeProvider, ContentSafety contentSafety,
-                       OrderService orderService, GymUserMapper userMapper, MembershipMapper membershipMapper) {
+                       OrderService orderService, GymUserMapper userMapper, MembershipMapper membershipMapper,
+                       AdminMemberService adminMemberService, MemberNoService memberNoService) {
         this.jdbc = jdbc;
         this.snowflake = snowflake;
         this.timeProvider = timeProvider;
@@ -50,6 +56,8 @@ public class ShopService implements CourseGrant {
         this.orderService = orderService;
         this.userMapper = userMapper;
         this.membershipMapper = membershipMapper;
+        this.adminMemberService = adminMemberService;
+        this.memberNoService = memberNoService;
     }
 
     public String repair(long userId, long storeId, String equipmentCode, String content, String imageUrl) {
@@ -296,6 +304,7 @@ public class ShopService implements CourseGrant {
                 """, id, storeId, name.trim(), phone.trim(), RichHtml.clean(intro), blank(avatarUrl), blank(photoUrl),
                 blank(specialty), rating == null ? 5.0 : rating, lessonTaught == null ? 0 : Math.max(0, lessonTaught),
                 blank(certificateUrls), timeProvider.now());
+        ensureCoachLogin(storeId, name.trim(), phone.trim());
         return String.valueOf(id);
     }
 
@@ -314,6 +323,7 @@ public class ShopService implements CourseGrant {
         if (updated != 1) {
             throw BizException.badRequest("教练不存在");
         }
+        ensureCoachLogin(storeId, name.trim(), phone.trim());
     }
 
     public void deleteCoach(AdminPrincipal actor, long id) {
@@ -389,6 +399,73 @@ public class ShopService implements CourseGrant {
         if (updated != 1) {
             throw BizException.badRequest("课程不存在");
         }
+    }
+
+    public List<Map<String, Object>> adminCoaches(long storeId) {
+        List<Map<String, Object>> rows = coaches(storeId);
+        for (Map<String, Object> row : rows) {
+            String phone = row.get("phone") == null ? "" : String.valueOf(row.get("phone"));
+            String name = row.get("name") == null ? "" : String.valueOf(row.get("name"));
+            String invite = ensureCoachLogin(storeId, name, phone);
+            row.put("inviteCode", invite);
+            row.put("wechatBound", invite.isEmpty());
+        }
+        return rows;
+    }
+
+    /** 教练用手机号和绑定码登录，不拍脸、不发短信。已绑定微信则不再返回绑定码。 */
+    private String ensureCoachLogin(long storeId, String name, String phone) {
+        String mobile = phone == null ? "" : phone.trim();
+        if (!mobile.matches("1\\d{10}")) {
+            throw BizException.badRequest("请填写 11 位手机号");
+        }
+        GymUser user = userMapper.selectOne(new LambdaQueryWrapper<GymUser>().eq(GymUser::getPhone, mobile));
+        LocalDateTime now = timeProvider.now();
+        if (user == null) {
+            user = new GymUser();
+            user.setId(snowflake.next());
+            user.setNickname(name.trim());
+            user.setPhone(mobile);
+            user.setMemberNo(memberNoService.next());
+            user.setRegisterStatus("ACTIVE");
+            user.setRegisteredAt(now);
+            user.setStatus("ACTIVE");
+            user.setCreatedStoreId(storeId);
+            user.setInviteCode(adminMemberService.newInviteCode());
+            user.setInviteFail(0);
+            user.setCreatedAt(now);
+            user.setUpdatedAt(now);
+            userMapper.insert(user);
+            return user.getInviteCode();
+        }
+        boolean bound = user.getOpenid() != null && !user.getOpenid().isBlank();
+        if (!"ACTIVE".equals(user.getRegisterStatus())) {
+            user.setRegisterStatus("ACTIVE");
+            if (user.getNickname() == null || user.getNickname().isBlank()) {
+                user.setNickname(name.trim());
+            }
+            if (user.getMemberNo() == null || user.getMemberNo().isBlank()) {
+                user.setMemberNo(memberNoService.next());
+            }
+            if (user.getRegisteredAt() == null) {
+                user.setRegisteredAt(now);
+            }
+            if (user.getCreatedStoreId() == null) {
+                user.setCreatedStoreId(storeId);
+            }
+        }
+        if (bound) {
+            user.setUpdatedAt(now);
+            userMapper.updateById(user);
+            return "";
+        }
+        if (user.getInviteCode() == null || user.getInviteCode().isBlank()) {
+            user.setInviteCode(adminMemberService.newInviteCode());
+            user.setInviteFail(0);
+        }
+        user.setUpdatedAt(now);
+        userMapper.updateById(user);
+        return user.getInviteCode();
     }
 
     public List<Map<String, Object>> coaches(long storeId) {

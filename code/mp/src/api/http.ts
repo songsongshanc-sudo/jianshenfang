@@ -5,7 +5,14 @@ export interface ApiBody<T> {
   traceId: string;
 }
 
-const baseURL = "http://127.0.0.1:8080"; // 测试地址，正式版改成服务器域名。见 开发文档/前端测试逻辑-待删除.md
+const baseURL =
+  // #ifdef H5
+  "";
+  // #endif
+  // #ifndef H5
+  "http://127.0.0.1:8080";
+  // #endif
+  // 小程序开发者工具仍走本机。H5 和页面放在同一台服务器上，用当前网址。见 开发文档/前端测试逻辑-待删除.md
 
 export function request<T>(options: UniApp.RequestOptions): Promise<T> {
   return new Promise((resolve, reject) => {

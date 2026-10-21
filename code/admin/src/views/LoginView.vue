@@ -52,7 +52,7 @@ async function submit() {
   try {
     const response = await http.post<ApiBody<LoginResult>>("/api/admin/auth/login", form);
     const data = response.data.data;
-    session.setSession(data.accessToken, data.role);
+    session.setSession(data.accessToken, data.role, data.storeId);
     await router.push("/");
   } finally {
     loading.value = false;

@@ -2,33 +2,28 @@
 
 ← 返回 [发布文档](发布文档.md)
 
-密钥写入 [服务器环境变量](发布-服务器环境变量.md)。人脸照片走服务器私有目录，**不进**公开 OSS。
+密钥写入 [服务器环境变量](发布-服务器环境变量.md)。人脸照片走服务器私有目录，和下面的公开图不是同一个文件夹。
+
+公开图不买对象存储。轮播、门店封面、到店指引、教练照片、课程封面、器械图、富文本图片都写在云服务器磁盘上。一家店大约几十张图，放本地即可。以后公开文件超过约 10GB，或要在小程序里直接播放存在服务器上的视频，再考虑 OSS。
 
 ---
 
-## 阿里云 OSS（公开图）
+## 公开图片（云服务器本地）
 
-用途：教练头像、场地封面、小程序轮播等。上传经 `POST /api/admin/uploads`。
+上传接口是 `POST /api/admin/files/images`。文件目录由 `PUBLIC_FILE_DIR` 决定，正式环境用 `/var/lib/gym/public`。从公网打开管理端时，返回的网址是当前网站的 `/api/uploads/...`，不再使用 `127.0.0.1`。`PUBLIC_FILE_BASE_URL` 写成 `https://api.xz100w.com` 之后，新上传的图片用这个域名。
 
-1. [开通 OSS](https://www.aliyun.com/product/oss)，建 Bucket（建议与 ECS 同地域）。  
-2. Bucket 设为**公共读、私有写**，或配合 CDN/自定义域名。  
-3. 控制台看 Endpoint、Bucket、访问域名。  
-4. [AccessKey](https://ram.console.aliyun.com/)（建议 RAM 子账号，最小权限）→ `OSS_ACCESS_KEY_ID` / `OSS_ACCESS_KEY_SECRET`。  
-5. 环境变量示例：
+| 变量 | 正式环境 |
+| --- | --- |
+| `PUBLIC_FILE_DIR` | `/var/lib/gym/public` |
+| `PUBLIC_FILE_BASE_URL` | 现在用公网 IP 时填 `http://59.110.11.215`。域名和证书就绪后改成 `https://api.xz100w.com` |
 
-| 变量 | 现为（yml） | 改成 |
-| --- | --- | --- |
-| `OSS_ENDPOINT` | （空） | 如 `https://oss-cn-hangzhou.aliyuncs.com`（与 [env 模板](发布-服务器环境变量.md#2-新建-etcgymgym-serverenv) 一致） |
-| `OSS_BUCKET` | （空） | Bucket 名 |
-| `OSS_ACCESS_KEY_ID` | （空） | RAM AK |
-| `OSS_ACCESS_KEY_SECRET` | （空） | RAM SK |
-| `OSS_PUBLIC_BASE_URL` | （空） | `https://你的Bucket域名` 或 CDN 域名 |
+改 `PUBLIC_FILE_BASE_URL` 后要 `sudo systemctl restart gym-server`。已经上传的图片网址不会自动改，换域名后需要重新上传，或接受旧地址。
 
-对象键前缀在代码里固定为 `public/...`，无需另配。
+本机测试不设这两项：文件在 `code/server/data/public`，网址是 `http://127.0.0.1:8080/uploads/...`。
 
-`OSS_PUBLIC_BASE_URL` 须加入小程序 **downloadFile 合法域名**，见 [微信与支付](发布-微信与支付.md)。
+小程序 downloadFile 使用接口域名即可，不必再配一个对象存储域名。见 [微信与支付](发布-微信与支付.md)。
 
-未配 OSS 时管理端上传会失败或不可用；不要用假域名凑数。
+`/uploads/` 已经写在 [现在能做与域名下来再做](现在能做与域名下来再做.md) 的 Nginx 命令里。接口域名那一份把所有路径转给 Java，图片也会走到后端。
 
 ---
 

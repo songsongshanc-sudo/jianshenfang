@@ -1,6 +1,13 @@
 import { request } from "./http";
 
-const baseURL = "http://127.0.0.1:8080"; // 测试地址，与 http.ts 同一处，正式版一起改。见 开发文档/前端测试逻辑-待删除.md
+const baseURL =
+  // #ifdef H5
+  "";
+  // #endif
+  // #ifndef H5
+  "http://127.0.0.1:8080";
+  // #endif
+  // 与 http.ts 同一规则。见 开发文档/前端测试逻辑-待删除.md
 
 export type EnterResult = {
   tokenType: string;
@@ -17,17 +24,7 @@ export function saveSession(data: { tokenType: string; accessToken: string }) {
 }
 
 export async function silentEnter(): Promise<EnterResult | null> {
-  const code = await new Promise<string>((resolve) => {
-    uni.login({
-      provider: "weixin",
-      success(res) {
-        resolve(res.code || `local${Date.now()}`);
-      },
-      fail() {
-        resolve(`local${Date.now()}`);
-      },
-    });
-  });
+  const code = await loginCode();
   try {
     const data = await request<EnterResult>({
       url: "/api/mp/auth/enter",
@@ -39,6 +36,35 @@ export async function silentEnter(): Promise<EnterResult | null> {
   } catch {
     return null;
   }
+}
+
+function loginCode(): Promise<string> {
+  // #ifdef H5
+  return Promise.resolve(h5DeviceCode());
+  // #endif
+  // #ifndef H5
+  return new Promise((resolve) => {
+    uni.login({
+      provider: "weixin",
+      success(res) {
+        resolve(res.code || `local${Date.now()}`);
+      },
+      fail() {
+        resolve(`local${Date.now()}`);
+      },
+    });
+  });
+  // #endif
+}
+
+function h5DeviceCode() {
+  const saved = uni.getStorageSync("h5DeviceCode") as string;
+  if (saved && /^h5[a-z0-9]{8,40}$/.test(saved)) {
+    return saved;
+  }
+  const next = `h5${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+  uni.setStorageSync("h5DeviceCode", next);
+  return next;
 }
 
 export function privacyUrl() {

@@ -1,1 +1,1 @@
-ALTER TABLE lesson_ledger ALTER COLUMN reason VARCHAR(64);
+ALTER TABLE lesson_ledger MODIFY COLUMN reason VARCHAR(64) NOT NULL;

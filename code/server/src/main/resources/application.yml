@@ -31,17 +31,13 @@ gym:
     face-minutes: 30
   files:
     public-base-url: ${PUBLIC_FILE_BASE_URL:http://127.0.0.1:8080}
-    oss:
-      endpoint: ${OSS_ENDPOINT:}
-      bucket: ${OSS_BUCKET:}
-      access-key-id: ${OSS_ACCESS_KEY_ID:}
-      access-key-secret: ${OSS_ACCESS_KEY_SECRET:}
-      public-base-url: ${OSS_PUBLIC_BASE_URL:}
+    public-dir: ${PUBLIC_FILE_DIR:data/public}
   map:
     tencent-key: ${TENCENT_MAP_KEY:}
   wx:
     mp-appid: ${WX_MP_APPID:}
     mp-secret: ${WX_MP_SECRET:}
+    h5-login: ${MP_H5_LOGIN:false}
   pay:
     mock-enabled: false
     mch-id: ${WX_PAY_MCH_ID:}

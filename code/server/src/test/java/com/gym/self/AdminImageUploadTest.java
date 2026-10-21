@@ -53,6 +53,20 @@ class AdminImageUploadTest {
                 .andExpect(status().isOk())
                 .andExpect(content().bytes(png));
 
+        MvcResult viaProxy = mockMvc.perform(multipart("/api/admin/files/images")
+                        .file(file)
+                        .param("biz", "BANNER")
+                        .header("Authorization", "Bearer " + token)
+                        .header("Host", "59.110.11.215")
+                        .header("X-Forwarded-Proto", "http"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.url").value(org.hamcrest.Matchers.startsWith("http://59.110.11.215/api/uploads/banner/")))
+                .andReturn();
+        String publicUrl = objectMapper.readTree(viaProxy.getResponse().getContentAsString()).get("data").get("url").asText();
+        mockMvc.perform(get(publicUrl.substring(publicUrl.indexOf("/api/uploads/"))))
+                .andExpect(status().isOk())
+                .andExpect(content().bytes(png));
+
         byte[] mp4 = new byte[] {0, 0, 0, 24, 102, 116, 121, 112};
         MockMultipartFile video = new MockMultipartFile("file", "clip.mp4", "video/mp4", mp4);
         mockMvc.perform(multipart("/api/admin/files/images")

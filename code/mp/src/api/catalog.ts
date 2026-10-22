@@ -83,6 +83,8 @@ export interface CardItem {
   id: string;
   name: string;
   priceFen: number;
+  payFen: number;
+  earlyRenew: boolean;
   displayText: string | null;
   validDays: number;
   remaining: number | null;

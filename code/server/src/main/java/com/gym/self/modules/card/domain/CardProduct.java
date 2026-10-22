@@ -19,6 +19,8 @@ public class CardProduct {
     private String name;
     private Long priceFen;
     @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private Long earlyRenewFen;
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String displayText;
     private Integer validDays;
     private String durationMode;

@@ -69,6 +69,9 @@ export interface CoursePack {
   store_id: string;
   name: string;
   price_fen: number;
+  pay_fen?: number;
+  early_renew?: boolean;
+  early_renew_fen?: number | null;
   lesson_count: number;
   content: string | null;
   audience: string | null;

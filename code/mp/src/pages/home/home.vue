@@ -124,12 +124,15 @@
     <scroll-view v-if="cardList.length" class="cards" scroll-x enable-flex>
       <view v-for="item in cardList" :key="item.id" class="sku" :class="{ gray: !item.purchasable }" @click="openCard(item)">
         <text class="sku-name">{{ item.name }}</text>
+        <text class="sku-meta">{{ item.displayText || `有效期${item.validDays}天` }}</text>
         <view class="sku-foot">
-          <text class="sku-price">{{ yuan(item.priceFen) }}</text>
-          <text class="sku-meta">{{ item.displayText || `有效期${item.validDays}天` }}</text>
-          <text v-if="item.remaining != null" class="sku-left">剩余 {{ item.remaining }} 张</text>
-          <text v-if="item.lockText" class="sku-lock">{{ item.lockText }}</text>
+          <text class="sku-price">{{ yuan(item.payFen || item.priceFen) }}</text>
+          <view class="sku-corner">
+            <text v-if="item.earlyRenew" class="sku-origin">{{ yuan(item.priceFen) }}</text>
+            <text v-if="item.remaining != null" class="sku-left">剩余 {{ item.remaining }} 张</text>
+          </view>
         </view>
+        <text v-if="item.lockText" class="sku-lock">{{ item.lockText }}</text>
       </view>
     </scroll-view>
     <view v-else class="empty-card">选择门店后，这里显示可购买的会员卡</view>
@@ -171,6 +174,7 @@ import { onShow } from "@dcloudio/uni-app";
 import { storeToRefs } from "pinia";
 import ContactSheet from "../../components/ContactSheet.vue";
 import { silentEnter } from "../../api/auth";
+import { isMember, promptLogin } from "../../utils/loginGate";
 import {
   banners,
   cards,
@@ -422,6 +426,10 @@ async function openContacts() {
 
 function openCard(item: CardItem) {
   if (item.purchasable && storeId.value) {
+    if (!isMember()) {
+      promptLogin();
+      return;
+    }
     uni.navigateTo({ url: `/package-card/pages/confirm/confirm?storeId=${storeId.value}&cardId=${item.id}` });
     return;
   }
@@ -682,7 +690,7 @@ onShow(async () => {
   flex-direction: column;
   justify-content: space-between;
   width: 300rpx;
-  height: 280rpx;
+  height: 300rpx;
   margin-right: 16rpx;
   padding: 28rpx 24rpx;
   border-radius: 20rpx;
@@ -694,11 +702,13 @@ onShow(async () => {
 }
 .sku.gray { background: #fafafa; color: #8a8f98; }
 .sku-name { font-size: 30rpx; font-weight: 700; line-height: 1.4; }
-.sku-foot { margin-top: auto; }
-.sku-price { display: block; font-size: 42rpx; font-weight: 800; color: #ea580c; line-height: 1.2; }
+.sku-foot { margin-top: auto; display: flex; align-items: flex-end; justify-content: space-between; gap: 8rpx; }
+.sku-price { font-size: 42rpx; font-weight: 800; color: #ea580c; line-height: 1.2; }
 .sku.gray .sku-price { color: #8a8f98; }
+.sku-corner { margin-left: auto; text-align: right; }
+.sku-origin { display: block; color: #a8a29e; font-size: 22rpx; text-decoration: line-through; line-height: 1.3; }
 .sku-meta, .sku-lock, .sku-left { display: block; margin-top: 8rpx; font-size: 22rpx; color: #8a8f98; }
-.sku-left { color: #ea580c; }
+.sku-left { margin-top: 4rpx; color: #ea580c; }
 .empty-card {
   padding: 40rpx 24rpx;
   border-radius: 20rpx;

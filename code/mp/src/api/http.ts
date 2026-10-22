@@ -1,3 +1,5 @@
+import { clearSession, promptLogin } from "../utils/loginGate";
+
 export interface ApiBody<T> {
   code: number;
   message: string;
@@ -28,7 +30,16 @@ export function request<T>(options: UniApp.RequestOptions): Promise<T> {
       success(res) {
         const body = res.data as ApiBody<T>;
         if (!body || body.code !== 0) {
-          uni.showToast({ title: body?.message || "请求失败", icon: "none" });
+          if (body?.code === 40100) {
+            const pages = getCurrentPages();
+            const route = pages[pages.length - 1]?.route || "";
+            if (route !== "pages/login/login") {
+              clearSession();
+            }
+            promptLogin();
+          } else {
+            uni.showToast({ title: body?.message || "请求失败", icon: "none" });
+          }
           reject(body);
           return;
         }

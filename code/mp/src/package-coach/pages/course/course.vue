@@ -12,7 +12,11 @@
 
     <view class="sheet">
       <text class="title">{{ pack.name }}</text>
-      <text class="price">¥{{ (pack.price_fen / 100).toFixed(0) }}</text>
+      <view class="price-row">
+        <text class="price">¥{{ yuan(pack.pay_fen ?? pack.price_fen) }}</text>
+        <text v-if="pack.early_renew" class="origin">¥{{ yuan(pack.price_fen) }}</text>
+      </view>
+      <text v-if="pack.early_renew" class="renew-note">课时还没用完，本次按提前续约优惠价付一次，不会自动扣下一期。</text>
 
       <view class="block">
         <view class="block-head">
@@ -55,7 +59,7 @@
     </view>
 
     <view class="footer">
-      <button class="buy" @click="buy">立即购买</button>
+      <button class="buy" @click="buy">{{ pack.early_renew ? "提前续约" : "立即购买" }}</button>
     </view>
   </view>
   <view v-else class="empty">课程不存在或已下架</view>
@@ -81,6 +85,11 @@ onLoad(async (query) => {
     pack.value = null;
   }
 });
+
+function yuan(fen: number) {
+  const value = fen / 100;
+  return Number.isInteger(value) ? String(value) : value.toFixed(2);
+}
 
 function goBack() {
   uni.navigateBack({ fail: () => uni.switchTab({ url: "/pages/coach/coach" }) });
@@ -162,7 +171,10 @@ async function buy() {
   background: #f5f6f8;
 }
 .title { display: block; font-size: 44rpx; font-weight: 800; color: #1a1a1a; }
-.price { display: block; margin-top: 12rpx; color: #ea580c; font-size: 48rpx; font-weight: 800; }
+.price-row { display: flex; align-items: flex-end; justify-content: space-between; margin-top: 12rpx; }
+.price { color: #ea580c; font-size: 48rpx; font-weight: 800; }
+.origin { color: #a8a29e; font-size: 26rpx; text-decoration: line-through; }
+.renew-note { display: block; margin-top: 12rpx; color: #9a3412; font-size: 24rpx; line-height: 1.5; }
 .block {
   margin-top: 20rpx;
   padding: 24rpx;

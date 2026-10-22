@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -25,9 +26,11 @@ import java.util.Map;
 public class ShopController {
 
     private final ShopService shopService;
+    private final RenewalRateService renewalRateService;
 
-    public ShopController(ShopService shopService) {
+    public ShopController(ShopService shopService, RenewalRateService renewalRateService) {
         this.shopService = shopService;
+        this.renewalRateService = renewalRateService;
     }
 
     @PostMapping("/api/mp/repairs")
@@ -99,7 +102,7 @@ public class ShopController {
 
     @GetMapping("/api/mp/coaches/{id}")
     public ApiResponse<Map<String, Object>> coachDetail(@PathVariable String id) {
-        Map<String, Object> coach = shopService.coachDetail(parse(id));
+        Map<String, Object> coach = shopService.coachDetail(parse(id), CurrentMp.optionalFormalUserId());
         stringifyCoach(coach);
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> packs = (List<Map<String, Object>>) coach.get("packs");
@@ -111,14 +114,14 @@ public class ShopController {
 
     @GetMapping("/api/mp/packs")
     public ApiResponse<List<Map<String, Object>>> packs(@RequestParam String storeId) {
-        List<Map<String, Object>> rows = shopService.packs(parse(storeId));
+        List<Map<String, Object>> rows = shopService.packs(parse(storeId), CurrentMp.optionalFormalUserId());
         rows.forEach(this::stringifyPack);
         return ApiResponse.ok(rows);
     }
 
     @GetMapping("/api/mp/packs/{id}")
     public ApiResponse<Map<String, Object>> packDetail(@PathVariable String id) {
-        Map<String, Object> pack = shopService.packDetail(parse(id));
+        Map<String, Object> pack = shopService.packDetail(parse(id), CurrentMp.optionalFormalUserId());
         stringifyPack(pack);
         return ApiResponse.ok(pack);
     }
@@ -305,13 +308,13 @@ public class ShopController {
     @PostMapping("/api/admin/packs")
     public ApiResponse<IdView> pack(@Valid @RequestBody PackSave request) {
         return ApiResponse.ok(new IdView(shopService.savePack(CurrentAdmin.get(), parse(request.coachId()), request.name(),
-                request.priceFen(), request.lessonCount(), request.content(), request.audience(), request.coverUrl(),
+                request.priceFen(), request.earlyRenewFen(), request.lessonCount(), request.content(), request.audience(), request.coverUrl(),
                 request.minutesPerLesson(), request.roomCols(), request.roomRows())));
     }
 
     @PutMapping("/api/admin/packs/{id}")
     public ApiResponse<Void> updatePack(@PathVariable String id, @Valid @RequestBody PackUpdate request) {
-        shopService.updatePack(CurrentAdmin.get(), parse(id), request.name(), request.priceFen(), request.lessonCount(),
+        shopService.updatePack(CurrentAdmin.get(), parse(id), request.name(), request.priceFen(), request.earlyRenewFen(), request.lessonCount(),
                 request.content(), request.audience(), request.coverUrl(), request.minutesPerLesson(), request.status(),
                 request.roomCols(), request.roomRows());
         return ApiResponse.ok(null);
@@ -321,6 +324,23 @@ public class ShopController {
     public ApiResponse<Void> deletePack(@PathVariable String id) {
         shopService.deletePack(CurrentAdmin.get(), parse(id));
         return ApiResponse.ok(null);
+    }
+
+    @GetMapping("/api/admin/renewal")
+    public ApiResponse<List<Map<String, Object>>> renewal(@RequestParam String storeId,
+                                                          @RequestParam(required = false) String from,
+                                                          @RequestParam(required = false) String to) {
+        StoreScopeCheck.masterOrOwn(CurrentAdmin.get(), parse(storeId));
+        return ApiResponse.ok(renewalRateService.summary(parse(storeId), day(from), day(to)));
+    }
+
+    @GetMapping("/api/admin/coaches/{id}/renewal")
+    public ApiResponse<List<Map<String, Object>>> coachRenewal(@PathVariable String id,
+                                                               @RequestParam(required = false) String from,
+                                                               @RequestParam(required = false) String to) {
+        long coachId = parse(id);
+        shopService.requireCoach(CurrentAdmin.get(), coachId);
+        return ApiResponse.ok(renewalRateService.detail(coachId, day(from), day(to)));
     }
 
     @GetMapping("/api/admin/franchise")
@@ -399,6 +419,13 @@ public class ShopController {
         }
     }
 
+    private static LocalDate day(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return LocalDate.parse(value);
+    }
+
     private static Long optional(String id) {
         return id == null || id.isBlank() ? null : parse(id);
     }
@@ -449,11 +476,11 @@ public class ShopController {
                                String certificateUrls) {
     }
 
-    public record PackSave(@NotBlank String coachId, @NotBlank String name, long priceFen, int lessonCount, String content,
+    public record PackSave(@NotBlank String coachId, @NotBlank String name, long priceFen, Long earlyRenewFen, int lessonCount, String content,
                            String audience, String coverUrl, Integer minutesPerLesson, Integer roomCols, Integer roomRows) {
     }
 
-    public record PackUpdate(@NotBlank String name, long priceFen, int lessonCount, String content, String audience,
+    public record PackUpdate(@NotBlank String name, long priceFen, Long earlyRenewFen, int lessonCount, String content, String audience,
                              String coverUrl, Integer minutesPerLesson, String status, Integer roomCols, Integer roomRows) {
     }
 

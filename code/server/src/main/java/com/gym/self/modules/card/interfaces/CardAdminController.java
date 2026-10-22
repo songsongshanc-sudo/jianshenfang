@@ -71,6 +71,7 @@ public class CardAdminController {
             @NotNull Integer validDays,
             @NotBlank String durationMode,
             Integer stockTotal,
+            Long earlyRenewFen,
             @NotBlank String unlockType,
             Integer unlockDays,
             @NotNull Integer crossStore,
@@ -79,7 +80,7 @@ public class CardAdminController {
             @NotBlank String status) {
 
         CardService.CardInput toInput(long storeId) {
-            return new CardService.CardInput(storeId, name, priceFen, displayText, validDays, durationMode, stockTotal,
+            return new CardService.CardInput(storeId, name, priceFen, earlyRenewFen, displayText, validDays, durationMode, stockTotal,
                     unlockType, unlockDays, crossStore, homeVisible, sortNo, status);
         }
     }

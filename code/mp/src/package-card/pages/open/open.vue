@@ -12,12 +12,17 @@
     >
       <view class="row">
         <text class="name">{{ item.name }}</text>
-        <text class="price">{{ yuan(item.priceFen) }}</text>
+        <text class="price">{{ yuan(item.payFen || item.priceFen) }}</text>
       </view>
       <text class="meta">有效 {{ item.validDays }} 天</text>
       <text v-if="item.displayText" class="meta">{{ item.displayText }}</text>
-      <text v-if="item.remaining != null" class="left">剩余 {{ item.remaining }} 张</text>
-      <text v-if="item.lockText" class="lock">{{ item.lockText }}</text>
+      <view class="bottom">
+        <text v-if="item.lockText" class="lock">{{ item.lockText }}</text>
+        <view class="corner">
+          <text v-if="item.earlyRenew" class="origin">{{ yuan(item.priceFen) }}</text>
+          <text v-if="item.remaining != null" class="left">剩余 {{ item.remaining }} 张</text>
+        </view>
+      </view>
     </view>
   </view>
 </template>
@@ -27,6 +32,7 @@ import { ref } from "vue";
 import { onLoad } from "@dcloudio/uni-app";
 import { cards, yuan, type CardItem } from "../../../api/catalog";
 import { useCurrentStore } from "../../../stores/currentStore";
+import { isMember, promptLogin } from "../../../utils/loginGate";
 
 const cardList = ref<CardItem[]>([]);
 const current = useCurrentStore();
@@ -48,6 +54,10 @@ function openCard(item: CardItem) {
     const storeId = current.storeId;
     if (!storeId) {
       uni.showToast({ title: "请先选择门店", icon: "none" });
+      return;
+    }
+    if (!isMember()) {
+      promptLogin();
       return;
     }
     uni.navigateTo({ url: `/package-card/pages/confirm/confirm?storeId=${storeId}&cardId=${item.id}` });
@@ -72,6 +82,9 @@ function openCard(item: CardItem) {
 .name { font-size: 32rpx; font-weight: 700; }
 .price { font-size: 36rpx; font-weight: 700; color: #ea580c; }
 .sku.gray .price { color: #8a8f98; }
-.meta, .lock, .left { display: block; margin-top: 8rpx; color: #8a8f98; font-size: 24rpx; }
-.left { color: #ea580c; }
+.meta, .lock { display: block; margin-top: 8rpx; color: #8a8f98; font-size: 24rpx; }
+.bottom { display: flex; align-items: flex-end; justify-content: space-between; margin-top: 12rpx; }
+.corner { margin-left: auto; text-align: right; }
+.origin { display: block; color: #a8a29e; font-size: 22rpx; text-decoration: line-through; }
+.left { display: block; margin-top: 4rpx; color: #ea580c; font-size: 24rpx; }
 </style>

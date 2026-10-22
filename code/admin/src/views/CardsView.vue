@@ -1,7 +1,7 @@
 <template>
   <div>
     <h1>卡种</h1>
-    <p class="lead">价格按元填写。不填库存表示不限量。累计天数和连续天数没达到时，小程序里这张卡是灰色的。</p>
+    <p class="lead">价格按元填写。提前续约价不填就没有优惠。不填库存表示不限量。累计天数和连续天数没达到时，小程序里这张卡是灰色的。</p>
     <el-form :inline="true">
       <el-form-item v-if="session.role === 'MASTER'" label="门店">
         <el-select v-model="storeId" placeholder="选择门店" style="width: 180px" @change="load">
@@ -19,6 +19,9 @@
       <el-table-column prop="name" label="名称" />
       <el-table-column label="价格" width="100">
         <template #default="{ row }">{{ fenToYuan(row.priceFen) }} 元</template>
+      </el-table-column>
+      <el-table-column label="提前续约" width="110">
+        <template #default="{ row }">{{ row.earlyRenewFen == null ? "—" : `${fenToYuan(row.earlyRenewFen)} 元` }}</template>
       </el-table-column>
       <el-table-column prop="validDays" label="天数" width="80" />
       <el-table-column label="剩余" width="90">
@@ -44,6 +47,9 @@
       <el-form label-width="110px">
         <el-form-item label="名称"><el-input v-model="form.name" /></el-form-item>
         <el-form-item label="价格（元）"><el-input v-model="form.priceYuan" /></el-form-item>
+        <el-form-item label="提前续约价">
+          <el-input v-model="form.earlyYuan" placeholder="不填表示没有优惠。未到期再买同一张卡时使用" />
+        </el-form-item>
         <el-form-item label="展示文案"><el-input v-model="form.displayText" placeholder="例如每天最低 0.33 元，可不填" /></el-form-item>
         <el-form-item label="有效天数"><el-input v-model="form.validDays" /></el-form-item>
         <el-form-item label="有效期">
@@ -105,6 +111,7 @@ interface CardRow {
   storeId: string;
   name: string;
   priceFen: number;
+  earlyRenewFen: number | null;
   displayText: string | null;
   validDays: number;
   durationMode: string;
@@ -128,6 +135,7 @@ const form = reactive({
   id: "",
   name: "",
   priceYuan: "",
+  earlyYuan: "",
   displayText: "",
   validDays: "7",
   durationMode: "HOURS_24",
@@ -173,6 +181,7 @@ function openCreate() {
   form.id = "";
   form.name = "";
   form.priceYuan = "";
+  form.earlyYuan = "";
   form.displayText = "";
   form.validDays = "7";
   form.durationMode = "HOURS_24";
@@ -190,6 +199,7 @@ function openEdit(row: CardRow) {
   form.id = row.id;
   form.name = row.name;
   form.priceYuan = fenToYuan(row.priceFen);
+  form.earlyYuan = row.earlyRenewFen == null ? "" : fenToYuan(row.earlyRenewFen);
   form.displayText = row.displayText || "";
   form.validDays = String(row.validDays);
   form.durationMode = row.durationMode;
@@ -209,10 +219,16 @@ async function save() {
     ElMessage.warning("请填写价格");
     return;
   }
+  const early = form.earlyYuan === "" ? null : Number(form.earlyYuan);
+  if (early != null && (!Number.isFinite(early) || early <= 0)) {
+    ElMessage.warning("提前续约价需大于 0，不填表示关闭");
+    return;
+  }
   const body = {
     storeId: storeId.value,
     name: form.name,
     priceFen: Math.round(price * 100),
+    earlyRenewFen: early == null ? null : Math.round(early * 100),
     displayText: form.displayText,
     validDays: Number(form.validDays),
     durationMode: form.durationMode,

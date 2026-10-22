@@ -121,7 +121,7 @@ public class OrderService {
         order.setBizType("CARD");
         order.setProductId(card.getId());
         order.setProductName(card.getName());
-        order.setAmountFen(card.getPriceFen());
+        order.setAmountFen(cardService.chargeFen(userId, card));
         order.setStatus("PENDING");
         order.setAgreementId(agreement.getId());
         order.setAgreementVersion(agreement.getVersionNo());
@@ -501,15 +501,26 @@ public class OrderService {
 
     private Membership membership(TradeOrder order, CardProduct card, LocalDateTime paidAt, String source) {
         LocalDateTime start = paidAt;
-        Membership latest = membershipMapper.selectOne(new LambdaQueryWrapper<Membership>()
+        Membership sameCard = membershipMapper.selectOne(new LambdaQueryWrapper<Membership>()
                 .eq(Membership::getUserId, order.getUserId())
-                .eq(Membership::getStoreId, order.getStoreId())
+                .eq(Membership::getCardProductId, order.getProductId())
                 .ne(Membership::getStatus, "REVOKED")
                 .gt(Membership::getEndAt, paidAt)
                 .orderByDesc(Membership::getEndAt)
                 .last("LIMIT 1"));
-        if (latest != null) {
-            start = latest.getEndAt();
+        if (sameCard != null) {
+            start = sameCard.getEndAt();
+        } else {
+            Membership latest = membershipMapper.selectOne(new LambdaQueryWrapper<Membership>()
+                    .eq(Membership::getUserId, order.getUserId())
+                    .eq(Membership::getStoreId, order.getStoreId())
+                    .ne(Membership::getStatus, "REVOKED")
+                    .gt(Membership::getEndAt, paidAt)
+                    .orderByDesc(Membership::getEndAt)
+                    .last("LIMIT 1"));
+            if (latest != null) {
+                start = latest.getEndAt();
+            }
         }
         int days = card == null || card.getValidDays() == null ? 1 : card.getValidDays();
         LocalDateTime end = card != null && "NATURAL_DAY".equals(card.getDurationMode())

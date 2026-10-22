@@ -59,8 +59,11 @@
           </el-table-column>
           <el-table-column prop="name" label="课程名" />
           <el-table-column prop="coach_name" label="教练" width="120" />
-          <el-table-column label="价格" width="100">
+          <el-table-column label="价格" width="120">
             <template #default="{ row }">{{ Number(row.price_fen) / 100 }} 元</template>
+          </el-table-column>
+          <el-table-column label="提前续约" width="120">
+            <template #default="{ row }">{{ row.early_renew_fen ? `${Number(row.early_renew_fen) / 100} 元` : "—" }}</template>
           </el-table-column>
           <el-table-column prop="lesson_count" label="课时" width="80" />
           <el-table-column label="单节时长" width="100">
@@ -74,6 +77,28 @@
             <template #default="{ row }">
               <el-button link type="primary" @click="openPack(row)">编辑</el-button>
               <el-button link type="danger" @click="removePack(row)">删除</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-tab-pane>
+
+      <el-tab-pane label="续课率" name="renewal">
+        <el-form :inline="true" class="toolbar">
+          <el-form-item label="上完时间">
+            <el-date-picker v-model="renewRange" type="daterange" value-format="YYYY-MM-DD" start-placeholder="开始" end-placeholder="结束" />
+          </el-form-item>
+          <el-button @click="loadRenewal">查询</el-button>
+        </el-form>
+        <el-table :data="renewalRows">
+          <el-table-column prop="coachName" label="教练" />
+          <el-table-column prop="finished" label="上完笔数" width="120" />
+          <el-table-column prop="renewed" label="续课成功" width="120" />
+          <el-table-column label="续课率" width="120">
+            <template #default="{ row }">{{ row.rate == null ? "—" : `${Number(row.rate).toFixed(1)}%` }}</template>
+          </el-table-column>
+          <el-table-column label="操作" width="100">
+            <template #default="{ row }">
+              <el-button link type="primary" @click="openRenewal(row)">名单</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -115,6 +140,10 @@
         </el-form-item>
         <el-form-item label="课程名"><el-input v-model="packForm.name" /></el-form-item>
         <el-form-item label="价格（分）"><el-input-number v-model="packForm.priceFen" :min="0" :step="100" /></el-form-item>
+        <el-form-item label="提前续约价（分）">
+          <el-input-number v-model="packForm.earlyRenewFen" :min="0" :step="100" />
+          <span class="hint">填 0 表示关闭。还有剩余课时时再买，按这个价付一次。</span>
+        </el-form-item>
         <el-form-item label="课时数"><el-input-number v-model="packForm.lessonCount" :min="1" :step="1" /></el-form-item>
         <el-form-item label="单节分钟"><el-input-number v-model="packForm.minutesPerLesson" :min="1" :step="5" /></el-form-item>
         <el-form-item label="教室列数"><el-input-number v-model="packForm.roomCols" :min="1" :max="20" /></el-form-item>
@@ -133,6 +162,20 @@
         <el-button @click="packOpen = false">取消</el-button>
         <el-button type="primary" @click="savePack">保存</el-button>
       </template>
+    </el-dialog>
+
+    <el-dialog v-model="renewOpen" title="续课名单" width="760px">
+      <el-table :data="renewDetail">
+        <el-table-column prop="memberName" label="学员" width="120" />
+        <el-table-column prop="phone" label="手机号" width="140" />
+        <el-table-column prop="packName" label="课包" />
+        <el-table-column prop="finishedAt" label="上完时间" min-width="170" />
+        <el-table-column label="是否已续" width="100">
+          <template #default="{ row }">{{ row.renewed ? "已续" : "未续" }}</template>
+        </el-table-column>
+        <el-table-column prop="renewedAt" label="续课时间" min-width="170" />
+        <el-table-column prop="renewPackName" label="续课课包" />
+      </el-table>
     </el-dialog>
   </div>
 </template>
@@ -168,6 +211,10 @@ const storeId = ref("");
 const tab = ref("coach");
 const coaches = ref<CoachRow[]>([]);
 const packs = ref<Record<string, unknown>[]>([]);
+const renewalRows = ref<Record<string, unknown>[]>([]);
+const renewDetail = ref<Record<string, unknown>[]>([]);
+const renewRange = ref<string[] | null>(null);
+const renewOpen = ref(false);
 const coachOpen = ref(false);
 const packOpen = ref(false);
 const certDraft = ref("");
@@ -188,6 +235,7 @@ const packForm = reactive({
   coachId: "",
   name: "",
   priceFen: 0,
+  earlyRenewFen: 0,
   lessonCount: 1,
   minutesPerLesson: 60,
   roomCols: 5,
@@ -290,6 +338,7 @@ function openPack(row?: Record<string, unknown>) {
   packForm.coachId = row ? String(row.coach_id) : (coaches.value[0]?.id || "");
   packForm.name = row ? String(row.name || "") : "";
   packForm.priceFen = row ? Number(row.price_fen || 0) : 0;
+  packForm.earlyRenewFen = row && row.early_renew_fen ? Number(row.early_renew_fen) : 0;
   packForm.lessonCount = row ? Number(row.lesson_count || 1) : 1;
   packForm.minutesPerLesson = row ? Number(row.minutes_per_lesson || 60) : 60;
   packForm.roomCols = row ? Number(row.room_cols || 5) : 5;
@@ -310,6 +359,7 @@ async function savePack() {
     coachId: packForm.coachId,
     name: packForm.name,
     priceFen: packForm.priceFen,
+    earlyRenewFen: packForm.earlyRenewFen > 0 ? packForm.earlyRenewFen : null,
     lessonCount: packForm.lessonCount,
     minutesPerLesson: packForm.minutesPerLesson,
     roomCols: packForm.roomCols,
@@ -329,6 +379,32 @@ async function savePack() {
   await reload();
 }
 
+async function loadRenewal() {
+  if (!storeId.value) {
+    renewalRows.value = [];
+    return;
+  }
+  const response = await http.get<ApiBody<Record<string, unknown>[]>>("/api/admin/renewal", {
+    params: {
+      storeId: storeId.value,
+      from: renewRange.value?.[0],
+      to: renewRange.value?.[1]
+    }
+  });
+  renewalRows.value = response.data.data;
+}
+
+async function openRenewal(row: Record<string, unknown>) {
+  const response = await http.get<ApiBody<Record<string, unknown>[]>>(`/api/admin/coaches/${row.coachId}/renewal`, {
+    params: {
+      from: renewRange.value?.[0],
+      to: renewRange.value?.[1]
+    }
+  });
+  renewDetail.value = response.data.data;
+  renewOpen.value = true;
+}
+
 async function removePack(row: Record<string, unknown>) {
   try {
     await ElMessageBox.confirm(`删除课程「${row.name}」。已有学员课时时不能删。`, "删除课程", { type: "warning" });
@@ -343,6 +419,7 @@ async function removePack(row: Record<string, unknown>) {
 
 <style scoped>
 .lead { color: #78716c; margin: 0 0 16px; }
+.hint { margin-left: 8px; color: #78716c; font-size: 12px; }
 .toolbar { margin-bottom: 8px; }
 .thumb { width: 48px; height: 48px; object-fit: cover; border-radius: 8px; }
 .certs { display: flex; flex-direction: column; gap: 10px; width: 100%; }

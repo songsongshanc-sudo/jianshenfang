@@ -3,8 +3,10 @@
     <view class="body">
       <text class="title">{{ card?.name || "确认购买" }}</text>
       <text v-if="storeName" class="line">门店 {{ storeName }}</text>
-      <text v-if="card" class="line">{{ yuan(card.priceFen) }}，有效 {{ card.validDays }} 天</text>
-      <text class="warn">确认购买门店，购买后不能退款，不能停卡，无法更改门店。</text>
+      <text v-if="card" class="line">{{ yuan(card.payFen || card.priceFen) }}，有效 {{ card.validDays }} 天</text>
+      <text v-if="card?.earlyRenew" class="line origin">原价 {{ yuan(card.priceFen) }}</text>
+      <text v-if="card?.earlyRenew" class="warn">本次是未到期续约，按优惠价付一次，付完后不自动扣下一期。确认购买门店后不能退款、不能停卡、不能更改门店。</text>
+      <text v-else class="warn">确认购买门店，购买后不能退款，不能停卡，无法更改门店。</text>
 
       <view class="guide">
         <text class="guide-title">{{ guide?.title || "会员服务说明" }}</text>
@@ -55,6 +57,7 @@ import {
   type CreatedOrder,
 } from "../../../api/order";
 import { fitRichHtml } from "../../../utils/richHtml";
+import { isMember, promptLogin } from "../../../utils/loginGate";
 
 const card = ref<CardItem | null>(null);
 const storeName = ref("");
@@ -73,12 +76,12 @@ const canPay = computed(() => checked.value && !!agreement.value && !created.val
 const buttonText = computed(() => {
   if (!agreement.value) return "协议未发布";
   if (!checked.value) return "请先勾选协议";
-  return "确认支付";
+  return card.value?.earlyRenew ? "提前续约" : "确认支付";
 });
 
 onLoad(async (query) => {
-  if (uni.getStorageSync("mpTokenType") !== "ACCESS") {
-    uni.navigateTo({ url: "/pages/login/login" });
+  if (!isMember()) {
+    promptLogin();
     return;
   }
   storeId.value = (query?.storeId as string) || "";
@@ -110,6 +113,10 @@ function openAgreement() {
 }
 
 async function submit() {
+  if (!isMember()) {
+    promptLogin();
+    return;
+  }
   if (!canPay.value || !card.value || !agreement.value || submitting.value) {
     if (!agreement.value) {
       uni.showToast({ title: "协议还没有发布", icon: "none" });
@@ -217,6 +224,7 @@ async function pay() {
   font-weight: 700;
 }
 .line { display: block; margin-top: 16rpx; padding: 0 8rpx; font-size: 28rpx; }
+.origin { color: #a8a29e; text-decoration: line-through; }
 .warn {
   display: block;
   margin: 24rpx 0;

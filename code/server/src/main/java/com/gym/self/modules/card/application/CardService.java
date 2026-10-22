@@ -97,7 +97,25 @@ public class CardService {
         MembershipProgress.Result progress = userId == null
                 ? new MembershipProgress.Result(0, 0, false)
                 : days(userId, storeId);
-        return cardProductMapper.selectList(query).stream().map(card -> toMp(card, progress)).toList();
+        return cardProductMapper.selectList(query).stream()
+                .map(card -> toMp(card, progress, earlyActive(userId, card)))
+                .toList();
+    }
+
+    public boolean earlyActive(Long userId, CardProduct card) {
+        if (userId == null || card.getEarlyRenewFen() == null || card.getEarlyRenewFen() < 1) {
+            return false;
+        }
+        Long count = membershipMapper.selectCount(new LambdaQueryWrapper<Membership>()
+                .eq(Membership::getUserId, userId)
+                .eq(Membership::getCardProductId, card.getId())
+                .ne(Membership::getStatus, "REVOKED")
+                .gt(Membership::getEndAt, timeProvider.now()));
+        return count != null && count > 0;
+    }
+
+    public long chargeFen(Long userId, CardProduct card) {
+        return earlyActive(userId, card) ? card.getEarlyRenewFen() : card.getPriceFen();
     }
 
     public ProgressView progress(Long userId, Long storeId) {
@@ -143,14 +161,14 @@ public class CardService {
         if (card.getDeleted() != null && card.getDeleted() == 1 || !"ON".equals(card.getStatus())) {
             return "卡种已下架";
         }
-        MpCard view = toMp(card, days(userId, card.getStoreId()));
+        MpCard view = toMp(card, days(userId, card.getStoreId()), earlyActive(userId, card));
         if (view.purchasable()) {
             return null;
         }
         return view.lockText() == null ? "暂时不能购买" : view.lockText();
     }
 
-    private MpCard toMp(CardProduct card, MembershipProgress.Result progress) {
+    private MpCard toMp(CardProduct card, MembershipProgress.Result progress, boolean earlyRenew) {
         Integer remaining = remaining(card);
         int owned = switch (card.getUnlockType()) {
             case "CUMULATIVE_DAYS" -> progress.cumulativeDays();
@@ -168,14 +186,16 @@ public class CardService {
             lockText = "已售罄";
         }
         boolean purchasable = lockText == null;
-        return new MpCard(String.valueOf(card.getId()), card.getName(), card.getPriceFen(), card.getDisplayText(),
-                card.getValidDays(), card.getDurationMode(), card.getUnlockType(), card.getUnlockDays(),
-                flag(card.getCrossStore()), remaining, purchasable, lockText);
+        boolean renew = earlyRenew && purchasable;
+        long payFen = renew ? card.getEarlyRenewFen() : card.getPriceFen();
+        return new MpCard(String.valueOf(card.getId()), card.getName(), card.getPriceFen(), payFen, renew,
+                card.getDisplayText(), card.getValidDays(), card.getDurationMode(), card.getUnlockType(),
+                card.getUnlockDays(), flag(card.getCrossStore()), remaining, purchasable, lockText);
     }
 
     private AdminCard toAdmin(CardProduct card) {
         return new AdminCard(String.valueOf(card.getId()), String.valueOf(card.getStoreId()), card.getName(),
-                card.getPriceFen(), card.getDisplayText(), card.getValidDays(), card.getDurationMode(),
+                card.getPriceFen(), card.getEarlyRenewFen(), card.getDisplayText(), card.getValidDays(), card.getDurationMode(),
                 card.getStockTotal(), sold(card.getStockSold()), sold(card.getStockReserved()), remaining(card),
                 card.getUnlockType(), card.getUnlockDays(), flag(card.getCrossStore()), flag(card.getHomeVisible()),
                 card.getSortNo(), card.getStatus());
@@ -193,6 +213,7 @@ public class CardService {
     private void fill(CardProduct card, CardInput input) {
         card.setName(input.name().trim());
         card.setPriceFen(input.priceFen());
+        card.setEarlyRenewFen(normalizeEarly(input.earlyRenewFen()));
         card.setDisplayText(blankToNull(input.displayText()));
         card.setValidDays(input.validDays());
         card.setDurationMode(input.durationMode());
@@ -208,6 +229,9 @@ public class CardService {
     private void validate(CardInput input) {
         if (input.priceFen() == null || input.priceFen() < 1) {
             throw BizException.badRequest("价格不正确");
+        }
+        if (input.earlyRenewFen() != null && input.earlyRenewFen() < 1) {
+            throw BizException.badRequest("提前续约价不正确");
         }
         if (input.validDays() == null || input.validDays() < 1) {
             throw BizException.badRequest("有效天数不正确");
@@ -267,6 +291,10 @@ public class CardService {
         return card;
     }
 
+    private static Long normalizeEarly(Long fen) {
+        return fen == null || fen < 1 ? null : fen;
+    }
+
     private static int sold(Integer value) {
         return value == null ? 0 : value;
     }
@@ -279,18 +307,18 @@ public class CardService {
         return value == null || value.isBlank() ? null : value.trim();
     }
 
-    public record CardInput(Long storeId, String name, Long priceFen, String displayText, Integer validDays,
+    public record CardInput(Long storeId, String name, Long priceFen, Long earlyRenewFen, String displayText, Integer validDays,
                             String durationMode, Integer stockTotal, String unlockType, Integer unlockDays,
                             Integer crossStore, Integer homeVisible, Integer sortNo, String status) {
     }
 
-    public record AdminCard(String id, String storeId, String name, long priceFen, String displayText, int validDays,
+    public record AdminCard(String id, String storeId, String name, long priceFen, Long earlyRenewFen, String displayText, int validDays,
                             String durationMode, Integer stockTotal, int stockSold, int stockReserved, Integer remaining,
                             String unlockType, Integer unlockDays, int crossStore, int homeVisible, int sortNo,
                             String status) {
     }
 
-    public record MpCard(String id, String name, long priceFen, String displayText, int validDays, String durationMode,
+    public record MpCard(String id, String name, long priceFen, long payFen, boolean earlyRenew, String displayText, int validDays, String durationMode,
                          String unlockType, Integer unlockDays, int crossStore, Integer remaining, boolean purchasable,
                          String lockText) {
     }

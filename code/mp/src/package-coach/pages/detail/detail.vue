@@ -41,7 +41,10 @@
         <view class="info">
           <text class="cname">{{ pack.name }}</text>
           <text class="cmeta">{{ pack.lesson_count }} 节 · 每节约 {{ pack.minutes_per_lesson || 60 }} 分钟</text>
-          <text class="cprice">¥ {{ (pack.price_fen / 100).toFixed(0) }}</text>
+          <view class="price-line">
+            <text class="cprice">¥ {{ yuan(pack.pay_fen ?? pack.price_fen) }}</text>
+            <text v-if="pack.early_renew" class="corigin">¥ {{ yuan(pack.price_fen) }}</text>
+          </view>
         </view>
         <view class="btn" @click="openCourse(pack.id)">查看详情</view>
       </view>
@@ -53,6 +56,11 @@
 import { computed, ref } from "vue";
 import { onLoad } from "@dcloudio/uni-app";
 import { coachDetail, type CoachDetail } from "../../../api/shop";
+
+function yuan(fen: number) {
+  const value = fen / 100;
+  return Number.isInteger(value) ? String(value) : value.toFixed(2);
+}
 
 const coach = ref<CoachDetail | null>(null);
 const statusPad = uni.getSystemInfoSync().statusBarHeight || 20;
@@ -184,7 +192,9 @@ function goBack() {
 .info { flex: 1; min-width: 0; }
 .cname { display: block; font-size: 30rpx; font-weight: 700; }
 .cmeta { display: block; margin-top: 8rpx; color: #ea580c; font-size: 22rpx; }
-.cprice { display: block; margin-top: 10rpx; color: #ea580c; font-size: 30rpx; font-weight: 700; }
+.price-line { display: flex; align-items: baseline; justify-content: space-between; margin-top: 10rpx; }
+.cprice { color: #ea580c; font-size: 30rpx; font-weight: 700; }
+.corigin { color: #a8a29e; font-size: 22rpx; text-decoration: line-through; }
 .btn {
   flex-shrink: 0;
   padding: 14rpx 22rpx;

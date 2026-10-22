@@ -344,7 +344,7 @@ public class ShopService implements CourseGrant {
         }
     }
 
-    public String savePack(AdminPrincipal actor, long coachId, String name, long priceFen, int lessonCount,
+    public String savePack(AdminPrincipal actor, long coachId, String name, long priceFen, Long earlyRenewFen, int lessonCount,
                            String content, String audience, String coverUrl, Integer minutesPerLesson,
                            Integer roomCols, Integer roomRows) {
         long storeId = coachStoreId(coachId);
@@ -358,14 +358,14 @@ public class ShopService implements CourseGrant {
         int cols = normalizeRoom(roomCols);
         int rows = normalizeRoom(roomRows);
         jdbc.update("""
-                INSERT INTO course_pack (id, coach_id, store_id, name, price_fen, lesson_count, content, audience, cover_url, minutes_per_lesson, room_cols, room_rows, status, created_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'ON', ?)
-                """, id, coachId, storeId, name.trim(), priceFen, lessonCount, blank(content), blank(audience),
+                INSERT INTO course_pack (id, coach_id, store_id, name, price_fen, early_renew_fen, lesson_count, content, audience, cover_url, minutes_per_lesson, room_cols, room_rows, status, created_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?, 'ON', ?)
+                """, id, coachId, storeId, name.trim(), priceFen, normalizeEarly(earlyRenewFen), lessonCount, blank(content), blank(audience),
                 blank(coverUrl), minutes, cols, rows, timeProvider.now());
         return String.valueOf(id);
     }
 
-    public void updatePack(AdminPrincipal actor, long id, String name, long priceFen, int lessonCount,
+    public void updatePack(AdminPrincipal actor, long id, String name, long priceFen, Long earlyRenewFen, int lessonCount,
                            String content, String audience, String coverUrl, Integer minutesPerLesson, String status,
                            Integer roomCols, Integer roomRows) {
         long storeId = packStoreId(id);
@@ -379,9 +379,9 @@ public class ShopService implements CourseGrant {
         int cols = normalizeRoom(roomCols);
         int rows = normalizeRoom(roomRows);
         int updated = jdbc.update("""
-                UPDATE course_pack SET name=?, price_fen=?, lesson_count=?, content=?, audience=?, cover_url=?, minutes_per_lesson=?, room_cols=?, room_rows=?, status=?
+                UPDATE course_pack SET name=?, price_fen=?, early_renew_fen=?, lesson_count=?, content=?, audience=?, cover_url=?, minutes_per_lesson=?, room_cols=?, room_rows=?, status=?
                 WHERE id=?
-                """, name.trim(), priceFen, lessonCount, blank(content), blank(audience), blank(coverUrl), minutes, cols, rows,
+                """, name.trim(), priceFen, normalizeEarly(earlyRenewFen), lessonCount, blank(content), blank(audience), blank(coverUrl), minutes, cols, rows,
                 nextStatus, id);
         if (updated != 1) {
             throw BizException.badRequest("课程不存在");
@@ -479,7 +479,7 @@ public class ShopService implements CourseGrant {
                 """, storeId);
     }
 
-    public Map<String, Object> coachDetail(long coachId) {
+    public Map<String, Object> coachDetail(long coachId, Long userId) {
         List<Map<String, Object>> rows = jdbc.queryForList("""
                 SELECT c.id, c.store_id, s.name AS store_name, s.cover_url AS store_cover_url, c.name, c.phone, c.intro,
                        c.avatar_url, c.photo_url, c.specialty, c.rating, c.lesson_taught, c.certificate_urls,
@@ -491,30 +491,34 @@ public class ShopService implements CourseGrant {
             throw BizException.badRequest("教练不存在");
         }
         Map<String, Object> coach = rows.get(0);
-        coach.put("packs", packsByCoach(coachId, true));
+        List<Map<String, Object>> packs = packsByCoach(coachId, true);
+        applyEarly(packs, userId);
+        coach.put("packs", packs);
         return coach;
     }
 
-    public List<Map<String, Object>> packs(long storeId) {
-        return jdbc.queryForList("""
-                SELECT id, coach_id, store_id, name, price_fen, lesson_count, content, audience, cover_url, minutes_per_lesson, status
+    public List<Map<String, Object>> packs(long storeId, Long userId) {
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT id, coach_id, store_id, name, price_fen, early_renew_fen, lesson_count, content, audience, cover_url, minutes_per_lesson, status
                 FROM course_pack WHERE store_id = ? AND status = 'ON' ORDER BY id
                 """, storeId);
+        applyEarly(rows, userId);
+        return rows;
     }
 
     public List<Map<String, Object>> adminPacks(AdminPrincipal actor, long storeId) {
         StoreScope.requireStoreAccess(actor, storeId);
         return jdbc.queryForList("""
-                SELECT p.id, p.coach_id, c.name AS coach_name, p.store_id, p.name, p.price_fen, p.lesson_count,
+                SELECT p.id, p.coach_id, c.name AS coach_name, p.store_id, p.name, p.price_fen, p.early_renew_fen, p.lesson_count,
                        p.content, p.audience, p.cover_url, p.minutes_per_lesson, p.status
                 FROM course_pack p JOIN coach c ON c.id = p.coach_id
                 WHERE p.store_id = ? ORDER BY p.id DESC
                 """, storeId);
     }
 
-    public Map<String, Object> packDetail(long packId) {
+    public Map<String, Object> packDetail(long packId, Long userId) {
         List<Map<String, Object>> rows = jdbc.queryForList("""
-                SELECT p.id, p.coach_id, p.store_id, p.name, p.price_fen, p.lesson_count, p.content, p.audience,
+                SELECT p.id, p.coach_id, p.store_id, p.name, p.price_fen, p.early_renew_fen, p.lesson_count, p.content, p.audience,
                        p.cover_url, p.minutes_per_lesson, p.status,
                        c.name AS coach_name, c.photo_url AS coach_photo_url, c.avatar_url AS coach_avatar_url
                 FROM course_pack p JOIN coach c ON c.id = p.coach_id
@@ -523,20 +527,25 @@ public class ShopService implements CourseGrant {
         if (rows.isEmpty() || !"ON".equals(rows.get(0).get("status"))) {
             throw BizException.badRequest("课程不存在");
         }
+        applyEarly(rows, userId);
         return rows.get(0);
     }
 
     private List<Map<String, Object>> packsByCoach(long coachId, boolean onlyOn) {
         if (onlyOn) {
             return jdbc.queryForList("""
-                    SELECT id, coach_id, store_id, name, price_fen, lesson_count, content, audience, cover_url, minutes_per_lesson, status
+                    SELECT id, coach_id, store_id, name, price_fen, early_renew_fen, lesson_count, content, audience, cover_url, minutes_per_lesson, status
                     FROM course_pack WHERE coach_id = ? AND status = 'ON' ORDER BY id
                     """, coachId);
         }
         return jdbc.queryForList("""
-                SELECT id, coach_id, store_id, name, price_fen, lesson_count, content, audience, cover_url, minutes_per_lesson, status
+                SELECT id, coach_id, store_id, name, price_fen, early_renew_fen, lesson_count, content, audience, cover_url, minutes_per_lesson, status
                 FROM course_pack WHERE coach_id = ? ORDER BY id
                 """, coachId);
+    }
+
+    public void requireCoach(AdminPrincipal actor, long coachId) {
+        StoreScope.requireStoreAccess(actor, coachStoreId(coachId));
     }
 
     private long coachStoreId(long coachId) {
@@ -557,13 +566,23 @@ public class ShopService implements CourseGrant {
 
     public OrderService.Created buyPack(long userId, long packId, long agreementId, int agreementVersion, String idempotencyKey) {
         List<Map<String, Object>> rows = jdbc.queryForList(
-                "SELECT store_id, name, price_fen, status FROM course_pack WHERE id = ?", packId);
+                "SELECT store_id, name, price_fen, early_renew_fen, status FROM course_pack WHERE id = ?", packId);
         if (rows.isEmpty() || !"ON".equals(rows.get(0).get("status"))) {
             throw BizException.rejected("课程不存在");
         }
         Map<String, Object> pack = rows.get(0);
+        long price = ((Number) pack.get("price_fen")).longValue();
+        Number early = (Number) pack.get("early_renew_fen");
+        if (early != null && early.longValue() > 0) {
+            Integer left = jdbc.queryForObject(
+                    "SELECT remaining FROM lesson_account WHERE user_id = ? AND pack_id = ?",
+                    Integer.class, userId, packId);
+            if (left != null && left > 0) {
+                price = early.longValue();
+            }
+        }
         return orderService.createCourse(userId, ((Number) pack.get("store_id")).longValue(), packId,
-                String.valueOf(pack.get("name")), ((Number) pack.get("price_fen")).longValue(),
+                String.valueOf(pack.get("name")), price,
                 agreementId, agreementVersion, idempotencyKey);
     }
 
@@ -834,6 +853,27 @@ public class ShopService implements CourseGrant {
         if (value == null || value.isBlank()) {
             throw BizException.badRequest(message);
         }
+    }
+
+    private void applyEarly(List<Map<String, Object>> rows, Long userId) {
+        for (Map<String, Object> row : rows) {
+            long price = ((Number) row.get("price_fen")).longValue();
+            Number early = (Number) row.get("early_renew_fen");
+            int left = 0;
+            if (userId != null && row.get("id") != null) {
+                Integer remaining = jdbc.queryForObject(
+                        "SELECT remaining FROM lesson_account WHERE user_id = ? AND pack_id = ?",
+                        Integer.class, userId, ((Number) row.get("id")).longValue());
+                left = remaining == null ? 0 : remaining;
+            }
+            boolean renew = early != null && early.longValue() > 0 && left > 0;
+            row.put("early_renew", renew);
+            row.put("pay_fen", renew ? early.longValue() : price);
+        }
+    }
+
+    private static Long normalizeEarly(Long fen) {
+        return fen == null || fen < 1 ? null : fen;
     }
 
     private static String blank(String value) {

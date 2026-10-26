@@ -55,13 +55,19 @@ public class StoreAdminController {
         storeAdminService.update(CurrentAdmin.get(), parseId(id), new StoreAdminService.StoreUpdate(
                 request.name(), request.province(), request.city(), request.address(), request.longitude(),
                 request.latitude(), request.coverUrl(), request.businessHours(), request.status(),
-                request.wifiSsid(), request.wifiPassword()));
+                request.wifiSsid(), request.wifiPassword(), request.channelsFinderId()));
         return ApiResponse.ok(null);
     }
 
     @PutMapping("/{id}/wifi")
     public ApiResponse<Void> updateWifi(@PathVariable String id, @Valid @RequestBody UpdateWifiRequest request) {
         storeAdminService.updateWifi(CurrentAdmin.get(), parseId(id), request.wifiSsid(), request.wifiPassword());
+        return ApiResponse.ok(null);
+    }
+
+    @PutMapping("/{id}/channels")
+    public ApiResponse<Void> updateChannels(@PathVariable String id, @Valid @RequestBody UpdateChannelsRequest request) {
+        storeAdminService.updateChannels(CurrentAdmin.get(), parseId(id), request.finderId());
         return ApiResponse.ok(null);
     }
 
@@ -121,12 +127,16 @@ public class StoreAdminController {
             @Size(max = 32) String businessHours,
             @NotBlank String status,
             @Size(max = 64) String wifiSsid,
-            @Size(max = 64) String wifiPassword) {
+            @Size(max = 64) String wifiPassword,
+            @Size(max = 64) String channelsFinderId) {
     }
 
     public record UpdateWifiRequest(
             @Size(max = 64) String wifiSsid,
             @Size(max = 64) String wifiPassword) {
+    }
+
+    public record UpdateChannelsRequest(@Size(max = 64) String finderId) {
     }
 
     public record PhoneItem(

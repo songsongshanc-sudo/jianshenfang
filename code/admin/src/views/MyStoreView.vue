@@ -1,7 +1,7 @@
 <template>
   <div>
     <h1>本店档案</h1>
-    <p class="lead">名称、地址、营业状态由总账号维护。本店可以自己设置 WiFi、电话和到店指引。</p>
+    <p class="lead">名称、地址、营业状态由总账号维护。本店可以自己设置 WiFi、电话、到店指引和视频号。</p>
     <el-descriptions v-if="store" :column="1" border>
       <el-descriptions-item label="编号">{{ store.code }}</el-descriptions-item>
       <el-descriptions-item label="名称">{{ store.name }}</el-descriptions-item>
@@ -14,6 +14,7 @@
     <el-form label-width="90px" class="wifi-form">
       <el-form-item label="WiFi 账号"><el-input v-model="wifiSsid" maxlength="64" placeholder="SSID" /></el-form-item>
       <el-form-item label="WiFi 密码"><el-input v-model="wifiPassword" maxlength="64" placeholder="可留空" show-password /></el-form-item>
+      <el-form-item label="视频号"><el-input v-model="channelsFinderId" maxlength="64" placeholder="sph 开头。留空则用总部视频号" /></el-form-item>
     </el-form>
 
     <h3>分时段电话</h3>
@@ -43,7 +44,7 @@
     </div>
     <el-button @click="guides.push({ imageUrl: '', caption: '' })">添加步骤</el-button>
     <div class="actions">
-      <el-button type="primary" :disabled="!store" @click="save">保存 WiFi、电话和指引</el-button>
+      <el-button type="primary" :disabled="!store" @click="save">保存 WiFi、视频号、电话和指引</el-button>
     </div>
     <ContentPreview ref="preview" />
   </div>
@@ -66,6 +67,7 @@ interface StoreRow {
   status: string;
   wifiSsid: string | null;
   wifiPassword: string | null;
+  channelsFinderId: string | null;
 }
 
 interface PhoneRow {
@@ -84,6 +86,7 @@ const preview = ref<InstanceType<typeof ContentPreview>>();
 const store = ref<StoreRow | null>(null);
 const wifiSsid = ref("");
 const wifiPassword = ref("");
+const channelsFinderId = ref("");
 const phones = ref<PhoneRow[]>([]);
 const guides = ref<GuideRow[]>([]);
 
@@ -95,6 +98,7 @@ onMounted(async () => {
   }
   wifiSsid.value = store.value.wifiSsid || "";
   wifiPassword.value = store.value.wifiPassword || "";
+  channelsFinderId.value = store.value.channelsFinderId || "";
   const phoneRes = await http.get<ApiBody<PhoneRow[]>>(`/api/admin/stores/${store.value.id}/phones`);
   phones.value = phoneRes.data.data.map((item) => ({
     phoneType: item.phoneType,
@@ -121,6 +125,7 @@ async function save() {
     wifiSsid: wifiSsid.value,
     wifiPassword: wifiPassword.value
   });
+  await http.put(`/api/admin/stores/${store.value.id}/channels`, { finderId: channelsFinderId.value.trim() });
   await http.put(`/api/admin/stores/${store.value.id}/phones`, {
     items: phones.value.map((item, index) => ({ ...item, sortNo: index }))
   });

@@ -2,7 +2,7 @@
   <div class="image-field">
     <el-input
       :model-value="modelValue"
-      :placeholder="placeholder || (video ? '视频链接' : '图片链接')"
+      :placeholder="placeholder || '图片链接'"
       clearable
       @update:model-value="emit('update:modelValue', $event ?? '')"
     />
@@ -18,13 +18,12 @@ import { http, type ApiBody } from "../api/http";
 
 const props = defineProps<{
   modelValue: string;
-  biz: "BANNER" | "COVER" | "GUIDE" | "EQUIPMENT" | "EQUIPMENT_VIDEO" | "COACH" | "CERT" | "PACK" | "RICH";
+  biz: "BANNER" | "COVER" | "GUIDE" | "EQUIPMENT" | "COACH" | "CERT" | "PACK" | "RICH";
   accept?: string;
   placeholder?: string;
 }>();
 const emit = defineEmits<{ "update:modelValue": [value: string] }>();
-const video = props.biz === "EQUIPMENT_VIDEO";
-const accept = props.accept || (video ? "video/mp4,video/webm,video/quicktime" : "image/jpeg,image/png,image/webp,image/gif");
+const accept = props.accept || "image/jpeg,image/png,image/webp,image/gif";
 
 function onFile(event: Event) {
   const input = event.target as HTMLInputElement;

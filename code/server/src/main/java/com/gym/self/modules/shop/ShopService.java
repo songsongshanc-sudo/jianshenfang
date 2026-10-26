@@ -25,7 +25,9 @@ import java.security.MessageDigest;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -151,21 +153,28 @@ public class ShopService implements CourseGrant {
         jdbc.update("UPDATE " + table + " SET status = ?, updated_at = ? WHERE id = ?", status, timeProvider.now(), id);
     }
 
-    public String saveEquipment(AdminPrincipal actor, Long id, long storeId, String code, String name, String intro, String imageUrl, String videoUrl) {
-        StoreScope.requireMaster(actor);
+    public String saveEquipment(AdminPrincipal actor, Long id, long storeId, String code, String name, String intro, String imageUrl, String feedId, String coverUrl) {
+        StoreScope.requireStoreAccess(actor, storeId);
         requireText(code, "请填写器械编号");
         requireText(name, "请填写器械名称");
+        String feed = normalizeFeed(feedId);
+        String cover = coverUrl(coverUrl);
         LocalDateTime now = timeProvider.now();
         String html = RichHtml.clean(intro);
         long equipmentId = id == null ? snowflake.next() : id;
         if (id == null) {
             jdbc.update("""
-                    INSERT INTO equipment (id, store_id, code, name, intro, created_at, updated_at)
-                    VALUES (?,?,?,?,?,?,?)
-                    """, equipmentId, storeId, code.trim(), name.trim(), html, now, now);
+                    INSERT INTO equipment (id, store_id, code, name, intro, feed_id, cover_url, created_at, updated_at)
+                    VALUES (?,?,?,?,?,?,?,?,?)
+                    """, equipmentId, storeId, code.trim(), name.trim(), html, feed, cover, now, now);
         } else {
-            int updated = jdbc.update("UPDATE equipment SET store_id=?, code=?, name=?, intro=?, updated_at=? WHERE id=?",
-                    storeId, code.trim(), name.trim(), html, now, equipmentId);
+            List<Map<String, Object>> existing = jdbc.queryForList("SELECT store_id FROM equipment WHERE id = ?", equipmentId);
+            if (existing.isEmpty()) {
+                throw BizException.badRequest("器械不存在");
+            }
+            StoreScope.requireStoreAccess(actor, ((Number) existing.get(0).get("store_id")).longValue());
+            int updated = jdbc.update("UPDATE equipment SET store_id=?, code=?, name=?, intro=?, feed_id=?, cover_url=?, updated_at=? WHERE id=?",
+                    storeId, code.trim(), name.trim(), html, feed, cover, now, equipmentId);
             if (updated != 1) {
                 throw BizException.badRequest("器械不存在");
             }
@@ -175,46 +184,114 @@ public class ShopService implements CourseGrant {
             jdbc.update("INSERT INTO equipment_media (id, equipment_id, media_type, url, sort_no) VALUES (?,?, 'IMAGE', ?, 0)",
                     snowflake.next(), equipmentId, imageUrl.trim());
         }
-        if (videoUrl != null && !videoUrl.isBlank()) {
-            jdbc.update("INSERT INTO equipment_media (id, equipment_id, media_type, url, sort_no) VALUES (?,?, 'VIDEO', ?, 1)",
-                    snowflake.next(), equipmentId, videoUrl.trim());
-        }
         return String.valueOf(equipmentId);
     }
 
     public void deleteEquipment(AdminPrincipal actor, long id) {
-        StoreScope.requireMaster(actor);
-        Integer found = jdbc.queryForObject("SELECT COUNT(*) FROM equipment WHERE id = ?", Integer.class, id);
-        if (found == null || found == 0) {
+        List<Map<String, Object>> existing = jdbc.queryForList("SELECT store_id FROM equipment WHERE id = ?", id);
+        if (existing.isEmpty()) {
             throw BizException.badRequest("器械不存在");
         }
+        StoreScope.requireStoreAccess(actor, ((Number) existing.get(0).get("store_id")).longValue());
         jdbc.update("DELETE FROM equipment_media WHERE equipment_id = ?", id);
         jdbc.update("DELETE FROM equipment WHERE id = ?", id);
     }
 
+    public String channelsFinderDefault() {
+        List<Map<String, Object>> rows = jdbc.queryForList(
+                "SELECT config_value FROM app_config WHERE config_key = 'channels.finder.id'");
+        if (rows.isEmpty() || rows.get(0).get("config_value") == null) {
+            return "";
+        }
+        return String.valueOf(rows.get(0).get("config_value"));
+    }
+
+    public void saveChannelsFinderDefault(AdminPrincipal actor, String finderId) {
+        StoreScope.requireMaster(actor);
+        String value = finderId == null || finderId.isBlank() ? "" : requireFinder(finderId);
+        int updated = jdbc.update(
+                "UPDATE app_config SET config_value = ?, updated_at = ? WHERE config_key = 'channels.finder.id'",
+                value, timeProvider.now());
+        if (updated != 1) {
+            throw BizException.badRequest("配置不存在");
+        }
+    }
+
     public List<Map<String, Object>> equipmentOf(long storeId) {
         return jdbc.queryForList("""
-                SELECT e.id, s.name AS store_name, e.code, e.name, e.intro,
+                SELECT e.id, s.name AS store_name, e.code, e.name, e.intro, e.feed_id, e.cover_url,
                     (SELECT m.url FROM equipment_media m WHERE m.equipment_id = e.id AND m.media_type = 'IMAGE' ORDER BY m.sort_no LIMIT 1) AS image_url,
-                    (SELECT m.url FROM equipment_media m WHERE m.equipment_id = e.id AND m.media_type = 'VIDEO' ORDER BY m.sort_no LIMIT 1) AS video_url
+                    COALESCE(NULLIF(s.channels_finder_id, ''), NULLIF(cfg.config_value, '')) AS finder_user_name
                 FROM equipment e
                 JOIN store s ON s.id = e.store_id
+                LEFT JOIN app_config cfg ON cfg.config_key = 'channels.finder.id'
                 WHERE e.store_id = ? ORDER BY e.id
                 """, storeId).stream().map(this::fitIntroField).toList();
     }
 
     public Map<String, Object> equipmentByCode(long storeId, String code) {
         List<Map<String, Object>> rows = jdbc.queryForList("""
-                SELECT e.id, e.code, e.name, e.intro,
+                SELECT e.id, e.code, e.name, e.intro, e.feed_id, e.cover_url,
                     (SELECT m.url FROM equipment_media m WHERE m.equipment_id = e.id AND m.media_type = 'IMAGE' ORDER BY m.sort_no LIMIT 1) AS image_url,
-                    (SELECT m.url FROM equipment_media m WHERE m.equipment_id = e.id AND m.media_type = 'VIDEO' ORDER BY m.sort_no LIMIT 1) AS video_url
+                    COALESCE(NULLIF(s.channels_finder_id, ''), NULLIF(cfg.config_value, '')) AS finder_user_name
                 FROM equipment e
+                JOIN store s ON s.id = e.store_id
+                LEFT JOIN app_config cfg ON cfg.config_key = 'channels.finder.id'
                 WHERE e.store_id = ? AND e.code = ?
                 """, storeId, code);
         if (rows.isEmpty()) {
             throw BizException.badRequest("没有这台器械的教程");
         }
         return fitIntroField(rows.get(0));
+    }
+
+    public Map<String, Object> equipmentVideos(Long storeId, String keyword, int page) {
+        int size = 10;
+        int safePage = Math.max(page, 1);
+        String word = keyword == null ? "" : keyword.trim();
+        if (word.length() > 32) {
+            throw BizException.badRequest("搜索内容过长");
+        }
+        boolean cross = !word.isEmpty();
+        if (!cross && storeId == null) {
+            throw BizException.badRequest("请先选择门店");
+        }
+        StringBuilder where = new StringBuilder("""
+                FROM equipment e
+                JOIN store s ON s.id = e.store_id AND s.deleted = 0
+                LEFT JOIN app_config cfg ON cfg.config_key = 'channels.finder.id'
+                WHERE e.feed_id IS NOT NULL AND e.feed_id <> ''
+                """);
+        List<Object> args = new ArrayList<>();
+        if (cross) {
+            String like = "%" + word.replace("%", "").replace("_", "").replace("\\", "") + "%";
+            where.append(" AND (e.name LIKE ? OR e.code LIKE ?)");
+            args.add(like);
+            args.add(like);
+        } else {
+            where.append(" AND e.store_id = ?");
+            args.add(storeId);
+        }
+        Integer total = jdbc.queryForObject("SELECT COUNT(*) " + where, Integer.class, args.toArray());
+        int count = total == null ? 0 : total;
+        List<Object> pageArgs = new ArrayList<>(args);
+        pageArgs.add(size);
+        pageArgs.add((safePage - 1L) * size);
+        List<Map<String, Object>> list = jdbc.queryForList("""
+                SELECT e.id, e.code, e.name, e.intro, e.cover_url, e.feed_id, s.name AS store_name,
+                    COALESCE(NULLIF(s.channels_finder_id, ''), NULLIF(cfg.config_value, '')) AS finder_user_name
+                """ + where + " ORDER BY e.updated_at DESC, e.id DESC LIMIT ? OFFSET ?", pageArgs.toArray());
+        list.forEach(row -> {
+            row.put("id", String.valueOf(row.get("id")));
+            fitIntroField(row);
+        });
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("list", list);
+        body.put("page", safePage);
+        body.put("size", size);
+        body.put("total", count);
+        body.put("hasMore", (long) safePage * size < count);
+        return body;
     }
 
     public void addGrouponRule(AdminPrincipal actor, long storeId, String platform, String code, long cardProductId) {
@@ -304,7 +381,7 @@ public class ShopService implements CourseGrant {
                 """, id, storeId, name.trim(), phone.trim(), RichHtml.clean(intro), blank(avatarUrl), blank(photoUrl),
                 blank(specialty), rating == null ? 5.0 : rating, lessonTaught == null ? 0 : Math.max(0, lessonTaught),
                 blank(certificateUrls), timeProvider.now());
-        ensureCoachLogin(storeId, name.trim(), phone.trim());
+        ensureCoachUser(storeId, name.trim(), phone.trim());
         return String.valueOf(id);
     }
 
@@ -323,7 +400,7 @@ public class ShopService implements CourseGrant {
         if (updated != 1) {
             throw BizException.badRequest("教练不存在");
         }
-        ensureCoachLogin(storeId, name.trim(), phone.trim());
+        ensureCoachUser(storeId, name.trim(), phone.trim());
     }
 
     public void deleteCoach(AdminPrincipal actor, long id) {
@@ -406,15 +483,13 @@ public class ShopService implements CourseGrant {
         for (Map<String, Object> row : rows) {
             String phone = row.get("phone") == null ? "" : String.valueOf(row.get("phone"));
             String name = row.get("name") == null ? "" : String.valueOf(row.get("name"));
-            String invite = ensureCoachLogin(storeId, name, phone);
-            row.put("inviteCode", invite);
-            row.put("wechatBound", invite.isEmpty());
+            row.put("wechatBound", ensureCoachUser(storeId, name, phone));
         }
         return rows;
     }
 
-    /** 教练用手机号和绑定码登录，不拍脸、不发短信。已绑定微信则不再返回绑定码。 */
-    private String ensureCoachLogin(long storeId, String name, String phone) {
+    /** 确保教练存在可登录的 user 记录，返回是否已绑定微信。 */
+    private boolean ensureCoachUser(long storeId, String name, String phone) {
         String mobile = phone == null ? "" : phone.trim();
         if (!mobile.matches("1\\d{10}")) {
             throw BizException.badRequest("请填写 11 位手机号");
@@ -431,12 +506,10 @@ public class ShopService implements CourseGrant {
             user.setRegisteredAt(now);
             user.setStatus("ACTIVE");
             user.setCreatedStoreId(storeId);
-            user.setInviteCode(adminMemberService.newInviteCode());
-            user.setInviteFail(0);
             user.setCreatedAt(now);
             user.setUpdatedAt(now);
             userMapper.insert(user);
-            return user.getInviteCode();
+            return false;
         }
         boolean bound = user.getOpenid() != null && !user.getOpenid().isBlank();
         if (!"ACTIVE".equals(user.getRegisterStatus())) {
@@ -453,19 +526,10 @@ public class ShopService implements CourseGrant {
             if (user.getCreatedStoreId() == null) {
                 user.setCreatedStoreId(storeId);
             }
-        }
-        if (bound) {
             user.setUpdatedAt(now);
             userMapper.updateById(user);
-            return "";
         }
-        if (user.getInviteCode() == null || user.getInviteCode().isBlank()) {
-            user.setInviteCode(adminMemberService.newInviteCode());
-            user.setInviteFail(0);
-        }
-        user.setUpdatedAt(now);
-        userMapper.updateById(user);
-        return user.getInviteCode();
+        return bound;
     }
 
     public List<Map<String, Object>> coaches(long storeId) {
@@ -847,6 +911,36 @@ public class ShopService implements CourseGrant {
         } catch (Exception exception) {
             throw new IllegalStateException(exception);
         }
+    }
+
+    private static String normalizeFeed(String feedId) {
+        if (feedId == null || feedId.isBlank()) {
+            return null;
+        }
+        String value = feedId.trim();
+        if (value.startsWith("http://") || value.startsWith("https://") || value.length() < 8 || value.length() > 256) {
+            throw BizException.badRequest("请填写视频号动态管理里复制的 feedId");
+        }
+        return value;
+    }
+
+    private static String coverUrl(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String value = raw.trim();
+        if (value.length() > 512 || !(value.startsWith("http://") || value.startsWith("https://"))) {
+            throw BizException.badRequest("预览图地址不正确");
+        }
+        return value;
+    }
+
+    private static String requireFinder(String finderId) {
+        String finder = finderId.trim();
+        if (!finder.matches("sph[A-Za-z0-9]{4,60}")) {
+            throw BizException.badRequest("视频号编号以 sph 开头，在视频号助手首页复制");
+        }
+        return finder;
     }
 
     private static void requireText(String value, String message) {

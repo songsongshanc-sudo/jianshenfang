@@ -154,12 +154,12 @@ class CardCatalogTest {
     }
 
     private String enroll(String phone) throws Exception {
-        MvcResult session = mockMvc.perform(post("/api/mp/auth/session")
+        MvcResult session = mockMvc.perform(post("/api/mp/auth/enter")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"code\":\"card-" + phone + "\"}"))
                 .andExpect(status().isOk())
                 .andReturn();
-        String sessionToken = objectMapper.readTree(session.getResponse().getContentAsString()).get("data").get("sessionToken").asText();
+        String sessionToken = objectMapper.readTree(session.getResponse().getContentAsString()).get("data").get("accessToken").asText();
         MvcResult phoneResult = mockMvc.perform(post("/api/mp/auth/phone")
                         .header("Authorization", "Bearer " + sessionToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -186,7 +186,14 @@ class CardCatalogTest {
                         .content("{\"objectKey\":\"" + objectKey + "\"}"))
                 .andExpect(status().isOk())
                 .andReturn();
-        return objectMapper.readTree(enrolled.getResponse().getContentAsString()).get("data").get("accessToken").asText();
+        String profile = objectMapper.readTree(enrolled.getResponse().getContentAsString()).get("data").get("accessToken").asText();
+        MvcResult completed = mockMvc.perform(post("/api/mp/auth/complete")
+                        .header("Authorization", "Bearer " + profile)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"测试会员\"}"))
+                .andExpect(status().isOk())
+                .andReturn();
+        return objectMapper.readTree(completed.getResponse().getContentAsString()).get("data").get("accessToken").asText();
     }
 
     private String createStore(String token) throws Exception {

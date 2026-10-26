@@ -112,6 +112,7 @@ public class StoreAdminService {
         store.setStatus(update.status());
         store.setWifiSsid(blankToNull(update.wifiSsid()));
         store.setWifiPassword(blankToNull(update.wifiPassword()));
+        store.setChannelsFinderId(channelsFinder(update.channelsFinderId()));
         store.setUpdatedAt(LocalDateTime.now());
         storeMapper.updateById(store);
     }
@@ -120,6 +121,13 @@ public class StoreAdminService {
         Store store = writable(actor, storeId);
         store.setWifiSsid(blankToNull(wifiSsid));
         store.setWifiPassword(blankToNull(wifiPassword));
+        store.setUpdatedAt(LocalDateTime.now());
+        storeMapper.updateById(store);
+    }
+
+    public void updateChannels(AdminPrincipal actor, long storeId, String finderId) {
+        Store store = writable(actor, storeId);
+        store.setChannelsFinderId(channelsFinder(finderId));
         store.setUpdatedAt(LocalDateTime.now());
         storeMapper.updateById(store);
     }
@@ -312,7 +320,8 @@ public class StoreAdminService {
     private StoreView toView(Store store) {
         return new StoreView(String.valueOf(store.getId()), store.getCode(), store.getName(), store.getProvince(),
                 store.getCity(), store.getAddress(), store.getLongitude(), store.getLatitude(), store.getCoverUrl(),
-                store.getBusinessHours(), store.getStatus(), store.getWifiSsid(), store.getWifiPassword());
+                store.getBusinessHours(), store.getStatus(), store.getWifiSsid(), store.getWifiPassword(),
+                store.getChannelsFinderId());
     }
 
     private PublicStore toPublic(Store store, BigDecimal longitude, BigDecimal latitude) {
@@ -360,14 +369,25 @@ public class StoreAdminService {
         return value.trim();
     }
 
+    private static String channelsFinder(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String finder = value.trim();
+        if (!finder.matches("sph[A-Za-z0-9]{4,60}")) {
+            throw BizException.badRequest("视频号编号以 sph 开头，在视频号助手首页复制");
+        }
+        return finder;
+    }
+
     public record StoreUpdate(String name, String province, String city, String address, BigDecimal longitude,
                               BigDecimal latitude, String coverUrl, String businessHours, String status,
-                              String wifiSsid, String wifiPassword) {
+                              String wifiSsid, String wifiPassword, String channelsFinderId) {
     }
 
     public record StoreView(String id, String code, String name, String province, String city, String address,
                             BigDecimal longitude, BigDecimal latitude, String coverUrl, String businessHours,
-                            String status, String wifiSsid, String wifiPassword) {
+                            String status, String wifiSsid, String wifiPassword, String channelsFinderId) {
     }
 
     public record PublicStore(String id, String name, String province, String city, String address,

@@ -57,6 +57,7 @@
         </el-form-item>
         <el-form-item label="WiFi 账号"><el-input v-model="edit.wifiSsid" /></el-form-item>
         <el-form-item label="WiFi 密码"><el-input v-model="edit.wifiPassword" /></el-form-item>
+        <el-form-item label="视频号"><el-input v-model="edit.channelsFinderId" placeholder="sph 开头。留空则用总部视频号" /></el-form-item>
       </el-form>
       <h3>分时段电话</h3>
       <p class="hint">白班、夜班必须填写时段。夜班可以跨过 0 点，例如 21:30 到 09:00。</p>
@@ -115,6 +116,7 @@ interface StoreRow {
   status: string;
   wifiSsid: string | null;
   wifiPassword: string | null;
+  channelsFinderId: string | null;
 }
 
 interface PhoneRow {
@@ -158,7 +160,8 @@ const edit = reactive({
   businessHours: "24h",
   status: "OPEN",
   wifiSsid: "",
-  wifiPassword: ""
+  wifiPassword: "",
+  channelsFinderId: ""
 });
 
 const pickLongitude = computed(() => (pickMode.value === "create" ? form.longitude : edit.longitude));
@@ -219,6 +222,7 @@ async function openEdit(row: StoreRow) {
   edit.status = row.status;
   edit.wifiSsid = row.wifiSsid || "";
   edit.wifiPassword = row.wifiPassword || "";
+  edit.channelsFinderId = row.channelsFinderId || "";
   const phoneRes = await http.get<ApiBody<PhoneRow[]>>(`/api/admin/stores/${row.id}/phones`);
   phones.value = phoneRes.data.data.map((item) => ({
     phoneType: item.phoneType,
@@ -243,7 +247,8 @@ async function save() {
     businessHours: edit.businessHours,
     status: edit.status,
     wifiSsid: edit.wifiSsid,
-    wifiPassword: edit.wifiPassword
+    wifiPassword: edit.wifiPassword,
+    channelsFinderId: edit.channelsFinderId
   });
   await http.put(`/api/admin/stores/${currentId.value}/phones`, {
     items: phones.value.map((item, index) => ({ ...item, sortNo: index }))

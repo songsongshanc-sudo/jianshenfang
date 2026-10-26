@@ -12,6 +12,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -29,12 +30,13 @@ class MpRegisterTest {
     private ObjectMapper objectMapper;
 
     @Test
-    void faceEnrollIssuesMemberNoAndSecondLoginSkipsCapture() throws Exception {
-        String session = session("dev-user-a");
-        mockMvc.perform(get("/api/mp/me").header("Authorization", "Bearer " + session))
-                .andExpect(status().isUnauthorized());
+    void memberNoIssuedWhenProfileCompleted() throws Exception {
+        String entered = enter("dev-user-a");
+        mockMvc.perform(get("/api/mp/me").header("Authorization", "Bearer " + entered))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(40100));
 
-        String face = phone(session, "13800001111");
+        String face = phone(entered, "13800001111");
         mockMvc.perform(get("/api/mp/me").header("Authorization", "Bearer " + face))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value(40100));
@@ -60,35 +62,52 @@ class MpRegisterTest {
                         .contentType(MediaType.APPLICATION_OCTET_STREAM)
                         .content(new byte[64]))
                 .andExpect(status().isOk());
-        MvcResult enrolled = mockMvc.perform(post("/api/mp/face")
+        mockMvc.perform(post("/api/mp/face")
                         .header("Authorization", "Bearer " + face)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"objectKey\":\"" + retryKey + "\"}"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.tokenType").value("REGISTER"))
+                .andExpect(jsonPath("$.data.memberNo").value(org.hamcrest.Matchers.nullValue()));
+
+        MvcResult completed = mockMvc.perform(post("/api/mp/auth/complete")
+                        .header("Authorization", "Bearer " + face)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"测试会员\"}"))
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.tokenType").value("ACCESS"))
-                .andExpect(jsonPath("$.data.memberNo").value("100000001"))
+                .andExpect(jsonPath("$.data.registerStatus").value("ACTIVE"))
                 .andReturn();
-        String access = objectMapper.readTree(enrolled.getResponse().getContentAsString()).get("data").get("accessToken").asText();
+        String memberNo = data(completed).get("memberNo").asText();
+        assertTrue(memberNo.matches("\\d{9}"));
+        String access = data(completed).get("accessToken").asText();
 
         mockMvc.perform(get("/api/mp/me").header("Authorization", "Bearer " + access))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.memberNo").value("100000001"))
+                .andExpect(jsonPath("$.data.memberNo").value(memberNo))
                 .andExpect(jsonPath("$.data.registerStatus").value("ACTIVE"));
 
-        String again = phone(session("dev-user-b"), "13800001111");
+        String again = enter("dev-user-a");
         mockMvc.perform(get("/api/mp/me").header("Authorization", "Bearer " + again))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.memberNo").value("100000001"));
+                .andExpect(jsonPath("$.data.memberNo").value(memberNo));
         assertNotEquals(face, again);
+
+        mockMvc.perform(post("/api/mp/auth/phone")
+                        .header("Authorization", "Bearer " + enter("dev-user-b"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"phoneCode\":\"13800001111\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("该手机号已绑定其他微信"));
     }
 
-    private String session(String code) throws Exception {
-        MvcResult result = mockMvc.perform(post("/api/mp/auth/session")
+    private String enter(String code) throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/mp/auth/enter")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"code\":\"" + code + "\"}"))
                 .andExpect(status().isOk())
                 .andReturn();
-        return data(result).get("sessionToken").asText();
+        return data(result).get("accessToken").asText();
     }
 
     private String phone(String sessionToken, String phone) throws Exception {

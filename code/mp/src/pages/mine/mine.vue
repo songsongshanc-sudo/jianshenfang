@@ -5,7 +5,7 @@
         <view class="avatar">{{ initial }}</view>
         <view class="who" @click="goProfileOrLogin">
           <text class="nick">{{ profile ? (profile.nickname || "会员") : "欢迎来到健身房" }} <text v-if="profile" class="arrow">›</text></text>
-          <text class="sub">{{ profile ? `已陪伴您 ${profile.companionDays} 天` : "新用户注册，或用门店给的绑定码登录" }}</text>
+          <text class="sub">{{ profile ? `已陪伴您 ${profile.companionDays} 天` : "手机号登录，注册即享会员服务" }}</text>
           <text v-if="profile" class="sub">会员编号：{{ profile.memberNo || "—" }}</text>
         </view>
         <view v-if="profile" class="gear-wrap" @click="goProfile">
@@ -16,8 +16,7 @@
       <text v-if="profile?.faceSync === 'PENDING'" class="remain">人脸正在同步到门店闸机</text>
       <text v-if="profile?.faceSync === 'FAILED'" class="remain">人脸同步失败，请联系门店重试</text>
       <view v-if="!profile" class="hero-actions">
-        <button class="hero-btn" @click="goLogin">立即注册</button>
-        <button class="hero-btn ghost" @click="goInvite">绑定码登录</button>
+        <button class="hero-btn" @click="goLogin">登录 / 注册</button>
       </view>
     </view>
 
@@ -66,7 +65,7 @@
         </view>
         <view class="cell" @click="requireMember(orders)"><view class="bubble"><image class="ico" src="/static/icon/order.png" mode="aspectFit" /></view><text>会员订单</text></view>
         <view class="cell" @click="requireMember(agreement)"><view class="bubble"><image class="ico" src="/static/icon/info.png" mode="aspectFit" /></view><text>会员协议</text></view>
-        <view class="cell" @click="requireMember(goProfile)"><view class="bubble"><image class="ico" src="/static/icon/camera.png" mode="aspectFit" /></view><text>我的信息</text></view>
+        <view class="cell" @click="requireMember(goProfile)"><view class="bubble"><image class="ico" src="/static/icon/camera.png" mode="aspectFit" /></view><text>完整信息</text></view>
       </view>
     </view>
     <view class="panel">
@@ -138,10 +137,6 @@ onShow(async () => {
 
 function goLogin() {
   uni.navigateTo({ url: "/pages/login/login" });
-}
-
-function goInvite() {
-  uni.navigateTo({ url: "/pages/login/login?mode=invite" });
 }
 
 function requireMember(action: () => void) {

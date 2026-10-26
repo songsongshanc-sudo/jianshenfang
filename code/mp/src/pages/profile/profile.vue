@@ -12,6 +12,7 @@
       <image v-if="preview" class="preview" :src="preview" mode="aspectFill" />
       <text class="hint">人脸不能更换。</text>
     </view>
+    <button class="logout" @click="logout">退出登录</button>
   </view>
 </template>
 
@@ -19,7 +20,7 @@
 import { ref } from "vue";
 import { onShow } from "@dcloudio/uni-app";
 import { me } from "../../api/catalog";
-import { facePreviewBase64 } from "../../api/auth";
+import { clearSession, facePreviewBase64, logout as logoutApi } from "../../api/auth";
 import { useCurrentStore } from "../../stores/currentStore";
 
 const current = useCurrentStore();
@@ -37,6 +38,20 @@ onShow(async () => {
   phone.value = profile.phone || "";
   preview.value = await facePreviewBase64().catch(() => "");
 });
+
+function logout() {
+  uni.showModal({
+    title: "退出登录",
+    content: "确定要退出当前账号吗？",
+    success(res) {
+      if (!res.confirm) return;
+      logoutApi().finally(() => {
+        clearSession();
+        uni.reLaunch({ url: "/pages/login/login" });
+      });
+    },
+  });
+}
 </script>
 
 <style scoped>
@@ -46,4 +61,5 @@ onShow(async () => {
 .value { display: block; margin-top: 8rpx; font-size: 32rpx; font-weight: 700; }
 .hint { display: block; margin-top: 16rpx; color: #8a8f98; font-size: 24rpx; line-height: 1.6; }
 .preview { width: 240rpx; height: 240rpx; margin-top: 16rpx; border-radius: 16rpx; background: #f3f4f6; }
+.logout { margin-top: 40rpx; background: #fff; color: #dc2626; border: 1px solid #fecaca; }
 </style>

@@ -32,7 +32,7 @@ public class LocalPublicImageStorage implements PublicImageStorage {
     public String store(String biz, String contentType, byte[] body) {
         PublicObjectNaming.validate(biz, contentType, body);
         String folder = PublicObjectNaming.folder(biz);
-        String extension = PublicObjectNaming.extension(biz, contentType);
+        String extension = PublicObjectNaming.extension(contentType);
         String name = UUID.randomUUID().toString().replace("-", "") + extension;
         Path dir = root.resolve(folder);
         try {

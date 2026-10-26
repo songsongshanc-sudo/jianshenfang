@@ -23,14 +23,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class MpAuthService {
-
-    private static final int INVITE_LIMIT = 5;
-    private final Map<String, Integer> unknownInviteFails = new ConcurrentHashMap<>();
 
     private final WxAuthPort wxAuthPort;
     private final FaceVendorPort faceVendorPort;
@@ -65,10 +60,11 @@ public class MpAuthService {
         this.smsCodeService = smsCodeService;
     }
 
+    /** 静默登录：code -> openid。已注册直接登录，否则进入注册阶段。 */
     public EnterView enter(String code) {
         WxAuthPort.Session session = wxAuthPort.exchange(code);
         GymUser user = userMapper.selectOne(new LambdaQueryWrapper<GymUser>().eq(GymUser::getOpenid, session.openid()));
-        if (user != null && "ACTIVE".equals(user.getRegisterStatus()) && user.getPhone() != null && !user.getPhone().isBlank()) {
+        if (user != null && "ACTIVE".equals(user.getRegisterStatus()) && hasPhone(user)) {
             return EnterView.from(formal(user), faceReady(user.getId()));
         }
         if (user == null) {
@@ -88,49 +84,93 @@ public class MpAuthService {
         return new EnterView("REGISTER", face.token(), null, user.getRegisterStatus(), user.getMemberNo(), faceReady(user.getId()));
     }
 
-    public SessionView session(String code) {
-        WxAuthPort.Session session = wxAuthPort.exchange(code);
-        GymUser user = userMapper.selectOne(new LambdaQueryWrapper<GymUser>().eq(GymUser::getOpenid, session.openid()));
-        if (user == null) {
-            LocalDateTime now = LocalDateTime.now();
-            user = new GymUser();
-            user.setId(snowflake.next());
-            user.setOpenid(session.openid());
-            user.setNickname("");
-            user.setRegisterStatus("NEED_PHONE");
-            user.setStatus("ACTIVE");
-            user.setCreatedAt(now);
-            user.setUpdatedAt(now);
-            userMapper.insert(user);
-        }
-        MpJwt.Issued issued = mpJwt.session(user.getId());
-        tokenStore.save(user.getId(), issued.jti(), issued.ttlSeconds());
-        return new SessionView(issued.token());
-    }
-
+    /** 本机号登录：微信 getPhoneNumber 返回的 code。 */
     @Transactional
     public LoginView phone(String phoneCode) {
-        MpPrincipal principal = CurrentMp.get();
-        if (!"wx_session".equals(principal.kind())) {
-            throw BizException.unauthorized();
-        }
-        GymUser sessionUser = mustUser(principal.userId());
+        MpPrincipal principal = requireFaceToken();
+        GymUser shell = mustUser(principal.userId());
         String phone = wxAuthPort.phone(phoneCode);
+        return loginByPhone(shell, phone);
+    }
+
+    /** 其他号码登录：手机号 + 验证码。 */
+    @Transactional
+    public LoginView login(String phone, String smsCode) {
+        MpPrincipal principal = requireFaceToken();
+        GymUser shell = mustUser(principal.userId());
+        String mobile = phone == null ? "" : phone.trim();
+        smsCodeService.verify(mobile, smsCode);
+        return loginByPhone(shell, mobile);
+    }
+
+    /** 统一手机号登录：绑定 openid，已注册发 access，未注册进入信息完善阶段。 */
+    private LoginView loginByPhone(GymUser shell, String phone) {
         GymUser phoneUser = userMapper.selectOne(new LambdaQueryWrapper<GymUser>().eq(GymUser::getPhone, phone));
-        GymUser user = bindPhone(sessionUser, phoneUser, phone);
-        if ("ACTIVE".equals(user.getRegisterStatus())) {
-            user.setUpdatedAt(LocalDateTime.now());
-            userMapper.updateById(user);
-            clearInvite(user.getId());
-            return formal(user);
+        GymUser target = bindPhone(shell, phoneUser, phone);
+        if ("ACTIVE".equals(target.getRegisterStatus())) {
+            target.setUpdatedAt(timeProvider.now());
+            userMapper.updateById(target);
+            return formal(target);
         }
-        user.setPhone(phone);
-        user.setRegisterStatus("NEED_FACE");
-        user.setUpdatedAt(LocalDateTime.now());
+        target.setPhone(phone);
+        target.setRegisterStatus("NEED_PROFILE");
+        target.setUpdatedAt(timeProvider.now());
+        userMapper.updateById(target);
+        MpJwt.Issued face = mpJwt.face(target.getId());
+        tokenStore.save(target.getId(), face.jti(), face.ttlSeconds());
+        return new LoginView("REGISTER", face.token(), null, "NEED_PROFILE", target.getMemberNo());
+    }
+
+    /** 信息完善：提交姓名，激活账号（人脸需已通过 /face 入库）。 */
+    @Transactional
+    public LoginView complete(String name) {
+        MpPrincipal principal = requireFaceToken();
+        GymUser user = mustUser(principal.userId());
+        if (!hasPhone(user)) {
+            throw BizException.badRequest("请先登录手机号");
+        }
+        if (!faceReady(user.getId())) {
+            throw BizException.badRequest("请先完成人脸核验");
+        }
+        String realName = name == null ? "" : name.trim();
+        if (realName.isEmpty() || realName.length() > 32) {
+            throw BizException.badRequest("请填写姓名");
+        }
+        if (user.getMemberNo() == null || user.getMemberNo().isBlank()) {
+            user.setMemberNo(memberNoService.next());
+        }
+        user.setNickname(realName);
+        user.setRegisterStatus("ACTIVE");
+        if (user.getRegisteredAt() == null) {
+            user.setRegisteredAt(timeProvider.now());
+        }
+        user.setUpdatedAt(timeProvider.now());
         userMapper.updateById(user);
-        MpJwt.Issued face = mpJwt.face(user.getId());
-        tokenStore.save(user.getId(), face.jti(), face.ttlSeconds());
-        return new LoginView("FACE", face.token(), null, "NEED_FACE", null);
+        UserFace enrolled = enrolledFace(user.getId());
+        if (enrolled != null) {
+            enrolled.setVendorFaceId(user.getMemberNo());
+            userFaceMapper.updateById(enrolled);
+        }
+        return formal(user);
+    }
+
+    /** 退出登录：撤销当前 token，并解绑微信（openid 置空），允许下次重新登录。 */
+    @Transactional
+    public void logout(String authorization) {
+        if (authorization == null || !authorization.startsWith("Bearer ")) {
+            return;
+        }
+        try {
+            var claims = mpJwt.parse(authorization.substring(7));
+            tokenStore.revoke(claims.getId());
+            long userId = Long.parseLong(claims.getSubject());
+            userMapper.update(null, new LambdaUpdateWrapper<GymUser>()
+                    .eq(GymUser::getId, userId)
+                    .set(GymUser::getOpenid, null)
+                    .set(GymUser::getUpdatedAt, timeProvider.now()));
+        } catch (RuntimeException ignored) {
+            // token 已失效，无需处理
+        }
     }
 
     public String presign(String contentType) {
@@ -139,7 +179,7 @@ public class MpAuthService {
         if (principal.formal()) {
             throw BizException.rejected("人脸不能修改");
         }
-        if (!principal.faceEnroll() || (!registering(user.getRegisterStatus()) && !"NEED_FACE".equals(user.getRegisterStatus()))) {
+        if (!principal.faceEnroll() || !preRegistration(user.getRegisterStatus())) {
             throw BizException.unauthorized();
         }
         return faceFileService.presign(user.getId(), contentType);
@@ -158,33 +198,13 @@ public class MpAuthService {
         throw BizException.rejected("人脸不能修改");
     }
 
+    /** 人脸入库（信息完善阶段调用）。 */
+    @Transactional
     public LoginView enroll(String objectKey) {
-        MpPrincipal principal = CurrentMp.get();
-        if (!principal.faceEnroll()) {
-            throw BizException.unauthorized();
-        }
+        MpPrincipal principal = requireFaceToken();
         GymUser user = mustUser(principal.userId());
-        if (!registering(user.getRegisterStatus()) && !"NEED_FACE".equals(user.getRegisterStatus())) {
-            throw BizException.badRequest("当前不需要采集人脸");
-        }
-        if (faceReady(user.getId()) && user.getMemberNo() != null && !user.getMemberNo().isBlank()) {
-            if (!"FACE_OK".equals(user.getRegisterStatus()) && !"ACTIVE".equals(user.getRegisterStatus()) && !"NEED_FACE".equals(user.getRegisterStatus())) {
-                user.setRegisterStatus("FACE_OK");
-                user.setUpdatedAt(timeProvider.now());
-                userMapper.updateById(user);
-            }
-            if ("NEED_FACE".equals(user.getRegisterStatus()) || "ACTIVE".equals(user.getRegisterStatus())) {
-                if ("NEED_FACE".equals(user.getRegisterStatus())) {
-                    user.setRegisterStatus("ACTIVE");
-                    user.setRegisteredAt(timeProvider.now());
-                    user.setUpdatedAt(timeProvider.now());
-                    userMapper.updateById(user);
-                }
-                return formal(user);
-            }
-            MpJwt.Issued issued = mpJwt.face(user.getId());
-            tokenStore.save(user.getId(), issued.jti(), issued.ttlSeconds());
-            return new LoginView("REGISTER", issued.token(), null, "FACE_OK", user.getMemberNo());
+        if (!hasPhone(user)) {
+            throw BizException.badRequest("请先登录手机号");
         }
         long size = faceFileService.size(user.getId(), objectKey);
         FaceVendorPort.Result result = faceVendorPort.enroll(user.getId(), objectKey, size);
@@ -200,127 +220,16 @@ public class MpAuthService {
             throw BizException.badRequest(result.reason() == null ? "人脸入库失败，请重新拍摄" : result.reason());
         }
         face.setStatus("ENROLLED");
-        LocalDateTime now = timeProvider.now();
-        if (user.getMemberNo() == null || user.getMemberNo().isBlank()) {
-            user.setMemberNo(memberNoService.next());
-        }
-        face.setVendorFaceId(user.getMemberNo());
+        face.setVendorFaceId(result.vendorFaceId());
         userFaceMapper.insert(face);
-        if ("NEED_FACE".equals(user.getRegisterStatus())) {
-            user.setRegisterStatus("ACTIVE");
-            user.setRegisteredAt(now);
-            user.setUpdatedAt(now);
-            userMapper.updateById(user);
-            return formal(user);
-        }
-        user.setRegisterStatus("FACE_OK");
-        user.setUpdatedAt(now);
-        userMapper.updateById(user);
         MpJwt.Issued issued = mpJwt.face(user.getId());
         tokenStore.save(user.getId(), issued.jti(), issued.ttlSeconds());
-        return new LoginView("REGISTER", issued.token(), null, "FACE_OK", user.getMemberNo());
+        return new LoginView("REGISTER", issued.token(), null, user.getRegisterStatus(), user.getMemberNo());
     }
 
     public void sendSms(String phone) {
-        requireRegistering();
-        smsCodeService.send(phone.trim());
-    }
-
-    @Transactional
-    public LoginView register(String name, String phone, String smsCode) {
-        MpPrincipal principal = CurrentMp.get();
-        if (!principal.faceEnroll()) {
-            throw BizException.unauthorized();
-        }
-        GymUser user = mustUser(principal.userId());
-        if (!"FACE_OK".equals(user.getRegisterStatus()) || !faceReady(user.getId())) {
-            throw BizException.rejected("请先完成人脸核验");
-        }
-        String realName = name == null ? "" : name.trim();
-        if (realName.isEmpty() || realName.length() > 32) {
-            throw BizException.badRequest("请填写姓名");
-        }
-        String mobile = phone == null ? "" : phone.trim();
-        smsCodeService.verify(mobile, smsCode);
-        GymUser phoneUser = userMapper.selectOne(new LambdaQueryWrapper<GymUser>().eq(GymUser::getPhone, mobile));
-        boolean kept = phoneUser != null && !phoneUser.getId().equals(user.getId())
-                && "ACTIVE".equals(phoneUser.getRegisterStatus());
-        GymUser target = bindPhone(user, phoneUser, mobile);
-        LocalDateTime now = timeProvider.now();
-        if (!kept) {
-            target.setNickname(realName);
-            target.setRegisterStatus("ACTIVE");
-            if (target.getRegisteredAt() == null) {
-                target.setRegisteredAt(now);
-            }
-        }
-        target.setPhone(mobile);
-        target.setUpdatedAt(now);
-        userMapper.updateById(target);
-        clearInvite(target.getId());
-        return formal(target);
-    }
-
-    @Transactional
-    public LoginView claim(String phone, String inviteCode) {
-        MpPrincipal principal = CurrentMp.get();
-        if (!principal.faceEnroll()) {
-            throw BizException.unauthorized();
-        }
-        GymUser shell = mustUser(principal.userId());
-        String mobile = phone == null ? "" : phone.trim();
-        String code = inviteCode == null ? "" : inviteCode.trim().toUpperCase().replace(" ", "");
-        if (!mobile.matches("1\\d{10}") || !code.matches("[A-Z2-9]{8}")) {
-            throw BizException.badRequest("请填写手机号和 8 位绑定码");
-        }
-        if (unknownInviteFails.getOrDefault(mobile, 0) >= INVITE_LIMIT) {
-            throw BizException.rejected("绑定码已锁定，请联系门店重新生成");
-        }
-        GymUser target = userMapper.selectOne(new LambdaQueryWrapper<GymUser>().eq(GymUser::getPhone, mobile));
-        if (target == null || !"ACTIVE".equals(target.getRegisterStatus())) {
-            unknownInviteFails.merge(mobile, 1, Integer::sum);
-            throw BizException.rejected("手机号或绑定码不正确");
-        }
-        int fails = target.getInviteFail() == null ? 0 : target.getInviteFail();
-        if (fails >= INVITE_LIMIT) {
-            throw BizException.rejected("绑定码已锁定，请联系门店重新生成");
-        }
-        if (target.getInviteCode() == null || !target.getInviteCode().equals(code)) {
-            target.setInviteFail(fails + 1);
-            userMapper.updateById(target);
-            if (fails + 1 >= INVITE_LIMIT) {
-                throw BizException.rejected("绑定码已锁定，请联系门店重新生成");
-            }
-            throw BizException.rejected("手机号或绑定码不正确");
-        }
-        if (target.getOpenid() != null && !target.getOpenid().isBlank()
-                && !target.getOpenid().equals(shell.getOpenid())) {
-            throw BizException.rejected("该手机号已绑定其他微信");
-        }
-        if (!shell.getId().equals(target.getId()) && occupied(shell)) {
-            throw BizException.rejected("当前微信已是其他会员");
-        }
-        String openid = shell.getOpenid();
-        if (!shell.getId().equals(target.getId())) {
-            userFaceMapper.delete(new LambdaQueryWrapper<UserFace>().eq(UserFace::getUserId, shell.getId()));
-            userMapper.deleteById(shell.getId());
-        }
-        int updated = userMapper.update(null, new LambdaUpdateWrapper<GymUser>()
-                .eq(GymUser::getId, target.getId())
-                .eq(GymUser::getInviteCode, code)
-                .and(wrapper -> wrapper.isNull(GymUser::getOpenid).or().eq(GymUser::getOpenid, ""))
-                .set(GymUser::getOpenid, openid)
-                .set(GymUser::getInviteCode, null)
-                .set(GymUser::getInviteFail, 0)
-                .set(GymUser::getUpdatedAt, timeProvider.now()));
-        if (updated == 0 && (target.getOpenid() == null || !target.getOpenid().equals(openid))) {
-            throw BizException.rejected("绑定码已失效，请联系门店重新生成");
-        }
-        if (updated == 0) {
-            clearInvite(target.getId());
-        }
-        GymUser bound = mustUser(target.getId());
-        return formal(bound);
+        requireFaceToken();
+        smsCodeService.send(phone == null ? "" : phone.trim());
     }
 
     public byte[] facePreview() {
@@ -377,6 +286,7 @@ public class MpAuthService {
         return new LoginView("ACCESS", access.token(), refresh.token(), "ACTIVE", user.getMemberNo());
     }
 
+    /** 把手机号绑到 shell 的 openid 上；若手机号已存在账号，则合并到该账号。 */
     private GymUser bindPhone(GymUser sessionUser, GymUser phoneUser, String phone) {
         if (phoneUser == null || phoneUser.getId().equals(sessionUser.getId())) {
             sessionUser.setPhone(phone);
@@ -389,8 +299,6 @@ public class MpAuthService {
         String openid = sessionUser.getOpenid();
         userMapper.deleteById(sessionUser.getId());
         phoneUser.setOpenid(openid);
-        phoneUser.setInviteCode(null);
-        phoneUser.setInviteFail(0);
         phoneUser.setUpdatedAt(timeProvider.now());
         if ((phoneUser.getMemberNo() == null || phoneUser.getMemberNo().isBlank()) && sessionUser.getMemberNo() != null) {
             phoneUser.setMemberNo(sessionUser.getMemberNo());
@@ -398,29 +306,20 @@ public class MpAuthService {
         return phoneUser;
     }
 
-    private void clearInvite(long userId) {
-        userMapper.update(null, new LambdaUpdateWrapper<GymUser>()
-                .eq(GymUser::getId, userId)
-                .set(GymUser::getInviteCode, null)
-                .set(GymUser::getInviteFail, 0));
-    }
-
-    private static boolean occupied(GymUser user) {
-        if (user.getPhone() != null && !user.getPhone().isBlank()) {
-            return true;
-        }
-        return "ACTIVE".equals(user.getRegisterStatus());
-    }
-
-    private void requireRegistering() {
+    private MpPrincipal requireFaceToken() {
         MpPrincipal principal = CurrentMp.get();
         if (!principal.faceEnroll()) {
             throw BizException.unauthorized();
         }
-        GymUser user = mustUser(principal.userId());
-        if (!registering(user.getRegisterStatus())) {
-            throw BizException.rejected("当前不能发送验证码");
-        }
+        return principal;
+    }
+
+    private static boolean hasPhone(GymUser user) {
+        return user.getPhone() != null && !user.getPhone().isBlank();
+    }
+
+    private static boolean preRegistration(String status) {
+        return "NEED_REGISTER".equals(status) || "NEED_PROFILE".equals(status);
     }
 
     private boolean faceReady(long userId) {
@@ -433,10 +332,6 @@ public class MpAuthService {
                 .eq(UserFace::getStatus, "ENROLLED")
                 .orderByDesc(UserFace::getId)
                 .last("LIMIT 1"));
-    }
-
-    private static boolean registering(String status) {
-        return "NEED_REGISTER".equals(status) || "FACE_OK".equals(status);
     }
 
     private static String displayName(GymUser user) {
@@ -452,9 +347,6 @@ public class MpAuthService {
             throw BizException.unauthorized();
         }
         return user;
-    }
-
-    public record SessionView(String sessionToken) {
     }
 
     public record LoginView(String tokenType, String accessToken, String refreshToken, String registerStatus, String memberNo) {

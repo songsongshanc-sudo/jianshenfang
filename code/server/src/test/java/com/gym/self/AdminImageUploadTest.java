@@ -73,7 +73,6 @@ class AdminImageUploadTest {
                         .file(video)
                         .param("biz", "EQUIPMENT_VIDEO")
                         .header("Authorization", "Bearer " + token))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.url").value(org.hamcrest.Matchers.containsString("/uploads/equipment/")));
+                .andExpect(status().isBadRequest());
     }
 }

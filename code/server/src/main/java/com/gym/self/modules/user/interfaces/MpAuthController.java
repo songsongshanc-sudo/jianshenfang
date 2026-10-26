@@ -36,32 +36,25 @@ public class MpAuthController {
         return ApiResponse.ok(null);
     }
 
-    @PostMapping("/auth/claim")
-    public ApiResponse<MpAuthService.LoginView> claim(@Valid @RequestBody ClaimRequest request) {
-        return ApiResponse.ok(mpAuthService.claim(request.phone(), request.inviteCode()));
-    }
-
-    @PostMapping("/auth/register")
-    public ApiResponse<MpAuthService.LoginView> register(@Valid @RequestBody RegisterRequest request) {
-        if (!Boolean.TRUE.equals(request.privacyAgreed())) {
-            throw BizException.badRequest("请先同意隐私指引");
-        }
-        return ApiResponse.ok(mpAuthService.register(request.name(), request.phone(), request.smsCode()));
-    }
-
-    @GetMapping(value = "/face/preview", produces = org.springframework.http.MediaType.IMAGE_JPEG_VALUE)
-    public byte[] facePreview() {
-        return mpAuthService.facePreview();
-    }
-
-    @PostMapping("/auth/session")
-    public ApiResponse<MpAuthService.SessionView> session(@Valid @RequestBody CodeRequest request) {
-        return ApiResponse.ok(mpAuthService.session(request.code()));
-    }
-
     @PostMapping("/auth/phone")
     public ApiResponse<MpAuthService.LoginView> phone(@Valid @RequestBody PhoneRequest request) {
         return ApiResponse.ok(mpAuthService.phone(request.phoneCode()));
+    }
+
+    @PostMapping("/auth/login")
+    public ApiResponse<MpAuthService.LoginView> login(@Valid @RequestBody LoginRequest request) {
+        return ApiResponse.ok(mpAuthService.login(request.phone(), request.smsCode()));
+    }
+
+    @PostMapping("/auth/complete")
+    public ApiResponse<MpAuthService.LoginView> complete(@Valid @RequestBody CompleteRequest request) {
+        return ApiResponse.ok(mpAuthService.complete(request.name()));
+    }
+
+    @PostMapping("/auth/logout")
+    public ApiResponse<Void> logout(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        mpAuthService.logout(authorization);
+        return ApiResponse.ok(null);
     }
 
     @PostMapping("/auth/refresh")
@@ -85,6 +78,11 @@ public class MpAuthController {
     @PutMapping("/me")
     public ApiResponse<MpAuthService.MeView> updateProfile(@Valid @RequestBody ProfileRequest request) {
         return ApiResponse.ok(mpAuthService.updateProfile(request.nickname()));
+    }
+
+    @GetMapping(value = "/face/preview", produces = org.springframework.http.MediaType.IMAGE_JPEG_VALUE)
+    public byte[] facePreview() {
+        return mpAuthService.facePreview();
     }
 
     @PostMapping("/files/presign")
@@ -118,6 +116,12 @@ public class MpAuthController {
     public record PhoneRequest(@NotBlank String phoneCode) {
     }
 
+    public record LoginRequest(@NotBlank String phone, @NotBlank String smsCode) {
+    }
+
+    public record CompleteRequest(@NotBlank String name) {
+    }
+
     public record RefreshRequest(@NotBlank String refreshToken) {
     }
 
@@ -131,13 +135,6 @@ public class MpAuthController {
     }
 
     public record SmsRequest(@NotBlank String phone) {
-    }
-
-    public record RegisterRequest(@NotBlank String name, @NotBlank String phone, @NotBlank String smsCode,
-                                  Boolean privacyAgreed) {
-    }
-
-    public record ClaimRequest(@NotBlank String phone, @NotBlank String inviteCode) {
     }
 
     public record ProfileRequest(@Size(max = 32) String nickname) {

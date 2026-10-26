@@ -1,7 +1,7 @@
 <template>
   <div>
     <h1>会员</h1>
-    <p class="lead">手工录入的会员会记成已支付订单，并生成一次性绑定码。会员用手机号和绑定码绑定微信后，绑定码失效。姓名和手机号可在编辑里修改，人脸不能改。</p>
+    <p class="lead">手工录入的会员会记成已支付订单。会员用手机号在小程序登录。姓名和手机号可在编辑里修改，人脸不能改。</p>
     <el-form :inline="true" class="toolbar">
       <el-form-item v-if="session.role === 'MASTER'" label="门店">
         <el-select v-model="filter.storeId" clearable placeholder="全部" style="width: 180px" @change="load">
@@ -21,11 +21,9 @@
       </el-table-column>
       <el-table-column prop="phone" label="手机号" width="140" />
       <el-table-column prop="memberNo" label="会员编号" width="120" />
-      <el-table-column label="绑定码" min-width="180">
+      <el-table-column label="微信" min-width="100">
         <template #default="{ row }">
-          <span v-if="row.wechatBound">已绑定</span>
-          <span v-else-if="row.inviteCode">{{ row.inviteCode }}</span>
-          <span v-else>未生成</span>
+          <span>{{ row.wechatBound ? "已绑定" : "未绑定" }}</span>
         </template>
       </el-table-column>
       <el-table-column prop="storeName" label="录入门店" min-width="140" />
@@ -67,7 +65,7 @@
     </el-dialog>
 
     <el-dialog v-model="importOpen" title="导入旧会员" width="560px">
-      <p class="lead">选择一台在线闸机。按闸机上的人员编号导入照片和到期时间，不重新下发人脸。姓名、手机号没有时，导入后在列表里补，再把绑定码交给会员。</p>
+      <p class="lead">选择一台在线闸机。按闸机上的人员编号导入照片和到期时间，不重新下发人脸。姓名、手机号没有时，导入后在列表里补。</p>
       <el-select v-model="importDeviceId" placeholder="选择闸机" style="width: 100%">
         <el-option
           v-for="gate in gates"
@@ -94,13 +92,11 @@
           <el-input v-model="grantPhone" maxlength="11" style="width: 240px" />
           <el-button style="margin-left: 12px" @click="savePhone">保存手机号</el-button>
         </el-form-item>
-        <el-form-item label="绑定码">
-          <template v-if="grantBound">已绑定微信。重新生成会解除当前微信，旧码同时失效。</template>
-          <template v-else-if="grantInvite">{{ grantInvite }}。交给会员后，绑定成功即失效。</template>
-          <template v-else>还没有绑定码。</template>
-          <div style="margin-top: 8px">
-            <el-button @click="copyInvite" :disabled="!grantInvite || grantBound">复制</el-button>
-            <el-button style="margin-left: 8px" @click="renewInvite">{{ grantInvite || grantBound ? "重新生成" : "生成绑定码" }}</el-button>
+        <el-form-item label="微信">
+          <template v-if="grantBound">已绑定微信。</template>
+          <template v-else>未绑定微信。</template>
+          <div v-if="grantBound" style="margin-top: 8px">
+            <el-button @click="unbind">解除微信绑定</el-button>
           </div>
         </el-form-item>
         <el-form-item label="门店">
@@ -146,7 +142,6 @@ const form = reactive({ storeId: "", name: "", phone: "", faceBase64: "", cardId
 const grant = reactive({ userId: "", storeId: "", cardIds: [] as string[], packIds: [] as string[] });
 const grantName = ref("");
 const grantPhone = ref("");
-const grantInvite = ref("");
 const grantBound = ref(false);
 const importOpen = ref(false);
 const importing = ref(false);
@@ -239,11 +234,10 @@ async function importMembers() {
 }
 
 async function create() {
-  const response = await http.post<ApiBody<{ id: string; inviteCode: string }>>("/api/admin/members", form);
-  const code = response.data.data.inviteCode;
+  await http.post<ApiBody<{ id: string }>>("/api/admin/members", form);
   createOpen.value = false;
   await load();
-  await ElMessageBox.alert(`绑定码 ${code}。请交给会员，在小程序用手机号和绑定码绑定微信。绑定后绑定码失效。`, "已录入");
+  ElMessage.success("已录入，会员可用手机号在小程序登录");
 }
 
 function openGrant(row: Record<string, any>) {
@@ -253,7 +247,6 @@ function openGrant(row: Record<string, any>) {
   grant.packIds = [];
   grantName.value = row.name;
   grantPhone.value = row.phone;
-  grantInvite.value = row.inviteCode || "";
   grantBound.value = !!row.wechatBound;
   grantOpen.value = true;
   void loadProducts(grant.storeId);
@@ -263,20 +256,11 @@ async function loadGrantProducts() {
   await loadProducts(grant.storeId);
 }
 
-async function copyInvite() {
-  if (!grantInvite.value) return;
-  await navigator.clipboard.writeText(grantInvite.value);
-  ElMessage.success("已复制");
-}
-
-async function renewInvite() {
-  if (grantBound.value) {
-    await ElMessageBox.confirm("重新生成后，当前微信将不能再直接进入，会员需要用新绑定码重新绑定。", "解除微信绑定");
-  }
-  const response = await http.post<ApiBody<{ inviteCode: string }>>(`/api/admin/members/${grant.userId}/invite`);
-  grantInvite.value = response.data.data.inviteCode;
+async function unbind() {
+  await ElMessageBox.confirm("解除后，会员需要用新微信在小程序重新登录。", "解除微信绑定");
+  await http.post(`/api/admin/members/${grant.userId}/unbind`);
   grantBound.value = false;
-  ElMessage.success("已生成新绑定码");
+  ElMessage.success("已解除微信绑定");
   await load();
 }
 

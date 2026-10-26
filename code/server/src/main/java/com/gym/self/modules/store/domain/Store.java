@@ -31,6 +31,8 @@ public class Store {
     private String wifiSsid;
     @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String wifiPassword;
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private String channelsFinderId;
     private String mchId;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

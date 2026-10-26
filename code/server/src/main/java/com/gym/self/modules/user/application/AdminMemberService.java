@@ -19,7 +19,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -29,9 +28,6 @@ import java.util.Map;
 
 @Service
 public class AdminMemberService {
-
-    private static final String INVITE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    private static final SecureRandom RANDOM = new SecureRandom();
 
     private final JdbcTemplate jdbc;
     private final GymUserMapper userMapper;
@@ -66,7 +62,7 @@ public class AdminMemberService {
     public List<Map<String, Object>> list(AdminPrincipal actor, Long storeId, String name, String phone) {
         Long scoped = StoreScope.requiredStore(actor, storeId);
         StringBuilder sql = new StringBuilder("""
-                SELECT u.id, u.nickname, u.phone, u.member_no, u.created_store_id, u.openid, u.invite_code, s.name AS store_name
+                SELECT u.id, u.nickname, u.phone, u.member_no, u.created_store_id, u.openid, s.name AS store_name
                 FROM `user` u
                 LEFT JOIN store s ON s.id = u.created_store_id
                 WHERE u.register_status = 'ACTIVE' AND u.member_no IS NOT NULL AND u.member_no <> ''
@@ -103,7 +99,6 @@ public class AdminMemberService {
             m.put("storeName", row.get("store_name"));
             boolean bound = row.get("openid") != null && !String.valueOf(row.get("openid")).isBlank();
             m.put("wechatBound", bound);
-            m.put("inviteCode", bound ? "" : String.valueOf(row.get("invite_code") == null ? "" : row.get("invite_code")));
             return m;
         }).toList();
     }
@@ -128,31 +123,22 @@ public class AdminMemberService {
         user.setRegisteredAt(now);
         user.setStatus("ACTIVE");
         user.setCreatedStoreId(storeId);
-        user.setInviteCode(nextInviteCode());
-        user.setInviteFail(0);
         user.setCreatedAt(now);
         user.setUpdatedAt(now);
         userMapper.insert(user);
         enrollFace(user, photo);
         grant(storeId, user.getId(), cardIds, packIds);
         adminOpLog.record(actor, storeId, user.getId(), user.getId(), "新增会员",
-                "姓名 " + realName + "，手机号 " + mobile + "，会员编号 " + user.getMemberNo() + "，已生成绑定码");
-        return Map.of("id", String.valueOf(user.getId()), "inviteCode", user.getInviteCode());
+                "姓名 " + realName + "，手机号 " + mobile + "，会员编号 " + user.getMemberNo());
+        return Map.of("id", String.valueOf(user.getId()));
     }
 
     @Transactional
-    public String renewInvite(AdminPrincipal actor, long userId) {
+    public void unbind(AdminPrincipal actor, long userId) {
         GymUser user = mustVisible(actor, userId);
-        boolean bound = user.getOpenid() != null && !user.getOpenid().isBlank();
-        String code = nextInviteCode();
-        jdbc.update("UPDATE `user` SET openid = NULL, invite_code = ?, invite_fail = 0, updated_at = ? WHERE id = ?",
-                code, timeProvider.now(), userId);
+        jdbc.update("UPDATE `user` SET openid = NULL, updated_at = ? WHERE id = ?", timeProvider.now(), userId);
         Long storeId = actor.storeId() != null ? actor.storeId() : user.getCreatedStoreId();
-        String detail = bound
-                ? "会员 " + display(user) + " 已解除原微信，需用新绑定码重新绑定"
-                : "会员 " + display(user) + " 已更换绑定码，旧码失效";
-        adminOpLog.record(actor, storeId, userId, userId, "重新生成绑定码", detail);
-        return code;
+        adminOpLog.record(actor, storeId, userId, userId, "解绑微信", "会员 " + display(user) + " 已解除微信绑定");
     }
 
     @Transactional
@@ -328,25 +314,6 @@ public class AdminMemberService {
         } catch (IllegalArgumentException ex) {
             throw BizException.badRequest("人脸照片不正确");
         }
-    }
-
-    public String newInviteCode() {
-        return nextInviteCode();
-    }
-
-    private String nextInviteCode() {
-        for (int attempt = 0; attempt < 8; attempt++) {
-            StringBuilder code = new StringBuilder(8);
-            for (int i = 0; i < 8; i++) {
-                code.append(INVITE_ALPHABET.charAt(RANDOM.nextInt(INVITE_ALPHABET.length())));
-            }
-            String value = code.toString();
-            Long taken = userMapper.selectCount(new LambdaQueryWrapper<GymUser>().eq(GymUser::getInviteCode, value));
-            if (taken == null || taken == 0) {
-                return value;
-            }
-        }
-        throw BizException.badRequest("绑定码生成失败，请重试");
     }
 
     private static String requireName(String name) {

@@ -22,15 +22,15 @@
     },
     {
       "path": "pages/login/login",
-      "style": { "navigationBarTitleText": "会员注册" }
+      "style": { "navigationBarTitleText": "登录" }
     },
     {
-      "path": "pages/face/face",
-      "style": { "navigationBarTitleText": "人脸采集" }
+      "path": "pages/register/register",
+      "style": { "navigationBarTitleText": "信息完善" }
     },
     {
       "path": "pages/profile/profile",
-      "style": { "navigationBarTitleText": "我的信息" }
+      "style": { "navigationBarTitleText": "完整信息" }
     },
     {
       "path": "pages/webview/webview",
@@ -68,7 +68,7 @@
         { "path": "pages/repair/repair", "style": { "navigationBarTitleText": "器械报修" } },
         { "path": "pages/complaint/complaint", "style": { "navigationBarTitleText": "投诉建议" } },
         { "path": "pages/lost/lost", "style": { "navigationBarTitleText": "失物招领" } },
-        { "path": "pages/equipment/equipment", "style": { "navigationBarTitleText": "器械指导" } },
+        { "path": "pages/equipment/equipment", "style": { "navigationBarTitleText": "器械指导", "onReachBottomDistance": 120 } },
         { "path": "pages/messages/messages", "style": { "navigationBarTitleText": "消息" } }
       ]
     },

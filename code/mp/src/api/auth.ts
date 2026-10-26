@@ -18,9 +18,22 @@ export type EnterResult = {
   faceReady: boolean;
 };
 
+export type LoginResult = {
+  tokenType: string;
+  accessToken: string;
+  refreshToken: string | null;
+  registerStatus: string;
+  memberNo: string | null;
+};
+
 export function saveSession(data: { tokenType: string; accessToken: string }) {
   uni.setStorageSync("mpToken", data.accessToken);
   uni.setStorageSync("mpTokenType", data.tokenType);
+}
+
+export function clearSession() {
+  uni.removeStorageSync("mpToken");
+  uni.removeStorageSync("mpTokenType");
 }
 
 export async function silentEnter(): Promise<EnterResult | null> {
@@ -75,20 +88,24 @@ export function sendSms(phone: string) {
   return request<void>({ url: "/api/mp/auth/sms", method: "POST", data: { phone } });
 }
 
-export function claimMember(body: { phone: string; inviteCode: string }) {
-  return request<{ tokenType: string; accessToken: string; memberNo: string | null }>({
-    url: "/api/mp/auth/claim",
-    method: "POST",
-    data: body,
-  });
+/** 本机号登录：微信 getPhoneNumber 返回的 code。 */
+export function loginByPhone(phoneCode: string) {
+  return request<LoginResult>({ url: "/api/mp/auth/phone", method: "POST", data: { phoneCode } });
 }
 
-export function registerMember(body: { name: string; phone: string; smsCode: string; privacyAgreed: boolean }) {
-  return request<{ tokenType: string; accessToken: string; memberNo: string | null }>({
-    url: "/api/mp/auth/register",
-    method: "POST",
-    data: body,
-  });
+/** 其他号码登录：手机号 + 验证码。 */
+export function loginBySms(phone: string, smsCode: string) {
+  return request<LoginResult>({ url: "/api/mp/auth/login", method: "POST", data: { phone, smsCode } });
+}
+
+/** 信息完善：提交姓名，激活账号。 */
+export function complete(name: string) {
+  return request<LoginResult>({ url: "/api/mp/auth/complete", method: "POST", data: { name } });
+}
+
+/** 退出登录：服务端 revoke 当前 token。 */
+export function logout() {
+  return request<void>({ url: "/api/mp/auth/logout", method: "POST" });
 }
 
 export function presignFace() {

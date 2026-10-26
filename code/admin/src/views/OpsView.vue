@@ -5,14 +5,22 @@
 
     <el-form v-if="route.path === '/equipment'" label-width="90px" class="block-form" @submit.prevent="save">
       <el-form-item label="门店">
-        <el-select v-model="form.storeId" placeholder="选择门店" style="width: 180px" @change="loadLists">
+        <el-select v-model="form.storeId" placeholder="选择门店" style="width: 180px" :disabled="session.role === 'STORE'" @change="onEquipmentStore">
           <el-option v-for="store in stores" :key="store.id" :label="store.name" :value="store.id" />
         </el-select>
       </el-form-item>
       <el-form-item label="器械编号"><el-input v-model="form.code" style="width: 180px" /></el-form-item>
       <el-form-item label="名称"><el-input v-model="form.name" style="width: 180px" /></el-form-item>
       <el-form-item label="图文"><RichTextField v-model="form.intro" biz="EQUIPMENT" /></el-form-item>
-      <el-form-item label="视频"><ImageField v-model="form.videoUrl" biz="EQUIPMENT_VIDEO" /></el-form-item>
+      <el-form-item label="视频号">
+        <el-input v-model="form.channelsFinderId" placeholder="sph 开头。留空则用总部视频号" style="width: 420px" />
+      </el-form-item>
+      <el-form-item label="feedId">
+        <el-input v-model="form.feedId" placeholder="视频号助手 → 动态管理里复制" style="width: 420px" />
+      </el-form-item>
+      <el-form-item label="预览图">
+        <ImageField v-model="form.coverUrl" biz="EQUIPMENT" />
+      </el-form-item>
       <el-form-item>
         <el-button type="primary" native-type="submit">{{ form.id ? "保存修改" : "保存" }}</el-button>
         <el-button v-if="form.id" @click="clearEquipment">取消编辑</el-button>
@@ -92,10 +100,15 @@
           </button>
         </template>
       </el-table-column>
-      <el-table-column label="视频" width="100">
+      <el-table-column label="预览图" width="90">
         <template #default="{ row }">
-          <button v-if="row.video_url" type="button" class="preview" @click="preview?.show({ title: String(row.name || '视频'), video: String(row.video_url) })">预览</button>
+          <button v-if="row.cover_url" type="button" class="preview" @click="preview?.show({ title: String(row.name || '预览图'), image: String(row.cover_url) })">预览</button>
           <span v-else>—</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="视频" width="90">
+        <template #default="{ row }">
+          <span>{{ row.feed_id ? "已填写" : "—" }}</span>
         </template>
       </el-table-column>
       <el-table-column label="操作" width="140">
@@ -197,6 +210,7 @@ import { useSessionStore } from "../stores/session";
 interface StoreRow {
   id: string;
   name: string;
+  channelsFinderId?: string | null;
 }
 
 interface CardRow {
@@ -235,7 +249,7 @@ const title = computed(() => ({
 }[route.path] || "管理"));
 
 const lead = computed(() => ({
-  "/equipment": "先选择门店。图文里可以直接写字，也可以插入图片。视频可以上传本地文件，也可以粘贴链接，不超过 200MB。",
+  "/equipment": "先选择门店。图文可以写字、插图片。视频发到视频号后，填写 feedId。视频号不提供封面，请再上传一张预览图，小程序列表会显示它。直营店的视频号可以留空，用系统配置里的总部视频号。",
   "/groupon": "先选择门店和对应卡种。券码只存哈希。用户在小程序提交后，匹配到规则就按这张卡开通会员。美团和抖音平台接口还没接。",
   "/coaches": "先选择门店。不选已有教练时会按姓名和手机号新建。买课增加课时，不会开通进店会员。",
   "/franchise": "页面文案由总账号配置。申请记录只在这里查看。",
@@ -290,13 +304,25 @@ function cardName(id: string) {
   return cards.value.find((card) => card.id === id)?.name || id;
 }
 
+function syncFinder() {
+  const store = stores.value.find((item) => item.id === form.storeId);
+  form.channelsFinderId = store?.channelsFinderId || "";
+}
+
+function onEquipmentStore() {
+  syncFinder();
+  clearEquipment();
+  void loadLists();
+}
+
 function clearEquipment() {
   form.id = "";
   form.code = "";
   form.name = "";
   form.intro = "";
   form.imageUrl = "";
-  form.videoUrl = "";
+  form.feedId = "";
+  form.coverUrl = "";
 }
 
 function editEquipment(row: Record<string, unknown>) {
@@ -305,7 +331,8 @@ function editEquipment(row: Record<string, unknown>) {
   form.name = String(row.name || "");
   form.intro = String(row.intro || "");
   form.imageUrl = String(row.image_url || "");
-  form.videoUrl = String(row.video_url || "");
+  form.feedId = String(row.feed_id || "");
+  form.coverUrl = String(row.cover_url || "");
 }
 
 async function removeEquipment(row: Record<string, unknown>) {
@@ -411,6 +438,9 @@ async function load() {
   if (!form.storeId && stores.value[0] && ["/equipment", "/groupon", "/coaches"].includes(route.path)) {
     form.storeId = stores.value[0].id;
   }
+  if (route.path === "/equipment") {
+    syncFinder();
+  }
   if (route.path === "/franchise") {
     const page = await http.get<ApiBody<Record<string, string>>>("/api/admin/franchise");
     Object.assign(form, page.data.data);
@@ -461,7 +491,21 @@ async function loadCards() {
 
 async function save() {
   if (route.path === "/equipment") {
-    await http.post("/api/admin/equipment", form);
+    await http.put(`/api/admin/stores/${form.storeId}/channels`, { finderId: form.channelsFinderId || "" });
+    const store = stores.value.find((item) => item.id === form.storeId);
+    if (store) {
+      store.channelsFinderId = form.channelsFinderId || "";
+    }
+    await http.post("/api/admin/equipment", {
+      id: form.id || undefined,
+      storeId: form.storeId,
+      code: form.code,
+      name: form.name,
+      intro: form.intro,
+      imageUrl: form.imageUrl,
+      feedId: form.feedId,
+      coverUrl: form.coverUrl
+    });
     clearEquipment();
   } else if (route.path === "/groupon") {
     if (form.editingId) {

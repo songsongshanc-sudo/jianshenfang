@@ -36,7 +36,7 @@
         <el-menu-item index="/repairs">报修</el-menu-item>
         <el-menu-item index="/complaints">投诉</el-menu-item>
         <el-menu-item index="/lost">失物</el-menu-item>
-        <el-menu-item v-if="session.role === 'MASTER'" index="/equipment">器械</el-menu-item>
+        <el-menu-item index="/equipment">器械</el-menu-item>
         <el-menu-item v-if="session.role === 'MASTER'" index="/franchise">加盟</el-menu-item>
         <el-menu-item index="/messages">消息</el-menu-item>
       </el-menu>

@@ -6,6 +6,7 @@ import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -13,10 +14,13 @@ import java.util.concurrent.ConcurrentHashMap;
 public class SmsCodeService {
 
     static final String DEV_CODE = "246810";
+    private static final long RESEND_SECONDS = 60;
+    private static final int DAILY_LIMIT = 10;
 
     private final Environment environment;
     private final String fixedCode;
     private final Map<String, Pending> pending = new ConcurrentHashMap<>();
+    private final Map<String, Integer> dailyCount = new ConcurrentHashMap<>();
 
     public SmsCodeService(Environment environment,
                           @Value("${gym.sms.fixed-code:}") String fixedCode) {
@@ -26,10 +30,22 @@ public class SmsCodeService {
 
     public void send(String phone) {
         requireMobile(phone);
+        Instant now = Instant.now();
+        Pending row = pending.get(phone);
+        if (row != null && now.isBefore(row.sentAt().plusSeconds(RESEND_SECONDS))) {
+            throw BizException.rejected("验证码发送太频繁，请稍后重试");
+        }
+        String day = LocalDate.now().toString();
+        int count = dailyCount.merge(phone + ":" + day, 1, Integer::sum);
+        if (count > DAILY_LIMIT) {
+            dailyCount.put(phone + ":" + day, DAILY_LIMIT);
+            throw BizException.rejected("验证码发送次数过多，请明天再试");
+        }
         if (localFixedEnabled()) {
-            pending.put(phone, new Pending(DEV_CODE, Instant.now().plusSeconds(300)));
+            pending.put(phone, new Pending(DEV_CODE, now.plusSeconds(300), now));
             return;
         }
+        // TODO: 接入阿里云短信（Dysmsapi）
         throw BizException.rejected("短信尚未配置，请先开通阿里云短信");
     }
 
@@ -62,6 +78,6 @@ public class SmsCodeService {
         }
     }
 
-    private record Pending(String code, Instant expireAt) {
+    private record Pending(String code, Instant expireAt, Instant sentAt) {
     }
 }

@@ -47,9 +47,10 @@ public class AdminMemberController {
         return ApiResponse.ok(gateMemberImportService.importFromGate(CurrentAdmin.get(), parse(request.deviceId())));
     }
 
-    @PostMapping("/api/admin/members/{id}/invite")
-    public ApiResponse<Map<String, String>> renewInvite(@PathVariable String id) {
-        return ApiResponse.ok(Map.of("inviteCode", adminMemberService.renewInvite(CurrentAdmin.get(), parse(id))));
+    @PostMapping("/api/admin/members/{id}/unbind")
+    public ApiResponse<Void> unbind(@PathVariable String id) {
+        adminMemberService.unbind(CurrentAdmin.get(), parse(id));
+        return ApiResponse.ok(null);
     }
 
     @PutMapping("/api/admin/members/{id}/name")

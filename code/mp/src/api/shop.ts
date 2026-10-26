@@ -30,14 +30,34 @@ export function lostFeed(storeId: string, tab: string) {
   });
 }
 
-export function equipmentList(storeId: string) {
-  return request<Array<{ id: string; code: string; name: string; intro: string; video_url: string }>>({
-    url: `/api/mp/equipment?storeId=${storeId}`, method: "GET"
+export interface EquipmentVideo {
+  id: string;
+  code: string;
+  name: string;
+  intro: string;
+  store_name: string;
+  cover_url: string;
+  feed_id: string;
+  finder_user_name: string;
+}
+
+export function equipmentVideos(storeId: string, keyword: string, page: number) {
+  const params = new URLSearchParams();
+  const word = keyword.trim();
+  if (word) {
+    params.set("keyword", word);
+  } else if (storeId) {
+    params.set("storeId", storeId);
+  }
+  params.set("page", String(page));
+  return request<{ list: EquipmentVideo[]; page: number; size: number; total: number; hasMore: boolean }>({
+    url: `/api/mp/equipment?${params.toString()}`,
+    method: "GET"
   });
 }
 
 export function equipmentByCode(storeId: string, code: string) {
-  return request<{ name: string; intro: string; video_url: string }>({
+  return request<{ name: string; intro: string; feed_id: string; finder_user_name: string }>({
     url: `/api/mp/equipment/by-code?storeId=${storeId}&code=${encodeURIComponent(code)}`, method: "GET"
   });
 }

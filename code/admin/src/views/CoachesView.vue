@@ -1,7 +1,7 @@
 <template>
   <div>
     <h1>教练与课程</h1>
-    <p class="lead">教练和课程分开维护。先建教练，再给教练加课程。新建教练会生成绑定码，教练在小程序用手机号和绑定码登录，不用注册。本店账号只能管自己门店。</p>
+    <p class="lead">教练和课程分开维护。先建教练，再给教练加课程。教练用手机号在小程序登录。本店账号只能管自己门店。</p>
 
     <el-form :inline="true" class="toolbar">
       <el-form-item label="门店">
@@ -23,10 +23,9 @@
           </el-table-column>
           <el-table-column prop="name" label="姓名" width="120" />
           <el-table-column prop="phone" label="手机号" width="140" />
-          <el-table-column label="绑定码" min-width="140">
+          <el-table-column label="微信" min-width="100">
             <template #default="{ row }">
-              <span v-if="row.wechatBound">已绑定</span>
-              <span v-else>{{ row.inviteCode || "—" }}</span>
+              <span>{{ row.wechatBound ? "已绑定" : "未绑定" }}</span>
             </template>
           </el-table-column>
           <el-table-column prop="specialty" label="擅长" />
@@ -108,7 +107,7 @@
     <el-dialog v-model="coachOpen" :title="coachForm.id ? '编辑教练' : '添加教练'" width="720px" destroy-on-close>
       <el-form label-width="96px">
         <el-form-item label="姓名"><el-input v-model="coachForm.name" /></el-form-item>
-        <el-form-item label="手机号"><el-input v-model="coachForm.phone" placeholder="11 位手机号，与绑定码一起登录" /></el-form-item>
+        <el-form-item label="手机号"><el-input v-model="coachForm.phone" placeholder="11 位手机号，教练用手机号登录" /></el-form-item>
         <el-form-item label="擅长"><el-input v-model="coachForm.specialty" placeholder="如：增肌塑形减脂" /></el-form-item>
         <el-form-item label="评分"><el-input-number v-model="coachForm.rating" :min="0" :max="5" :step="0.1" /></el-form-item>
         <el-form-item label="累计课时"><el-input-number v-model="coachForm.lessonTaught" :min="0" :step="1" /></el-form-item>
@@ -193,7 +192,6 @@ interface CoachRow {
   id: string;
   name: string;
   phone?: string;
-  inviteCode?: string;
   wechatBound?: boolean;
   intro?: string;
   avatar_url?: string;
@@ -316,7 +314,7 @@ async function saveCoach() {
     ElMessage.success("已保存");
   } else {
     await http.post("/api/admin/coaches", body);
-    ElMessage.success("已添加，绑定码见列表");
+    ElMessage.success("已添加");
   }
   coachOpen.value = false;
   await reload();

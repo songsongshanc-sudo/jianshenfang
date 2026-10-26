@@ -1,0 +1,1 @@
+ALTER TABLE equipment ADD COLUMN cover_url VARCHAR(512) NULL;

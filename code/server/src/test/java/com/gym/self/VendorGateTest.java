@@ -260,10 +260,10 @@ class VendorGateTest {
     }
 
     private String enroll(String phone) throws Exception {
-        String sessionToken = read(mockMvc.perform(post("/api/mp/auth/session")
+        String sessionToken = read(mockMvc.perform(post("/api/mp/auth/enter")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"code\":\"vendor-" + phone + "\"}"))
-                .andExpect(status().isOk()).andReturn()).get("sessionToken").asText();
+                .andExpect(status().isOk()).andReturn()).get("accessToken").asText();
         String face = read(mockMvc.perform(post("/api/mp/auth/phone")
                         .header("Authorization", "Bearer " + sessionToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -280,10 +280,15 @@ class VendorGateTest {
                         .contentType(MediaType.APPLICATION_OCTET_STREAM)
                         .content(new byte[64]))
                 .andExpect(status().isOk());
-        return read(mockMvc.perform(post("/api/mp/face")
+        String profile = read(mockMvc.perform(post("/api/mp/face")
                         .header("Authorization", "Bearer " + face)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"objectKey\":\"" + objectKey + "\"}"))
+                .andExpect(status().isOk()).andReturn()).get("accessToken").asText();
+        return read(mockMvc.perform(post("/api/mp/auth/complete")
+                        .header("Authorization", "Bearer " + profile)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"测试会员\"}"))
                 .andExpect(status().isOk()).andReturn()).get("accessToken").asText();
     }
 }

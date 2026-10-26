@@ -4,60 +4,10 @@
       <view class="hero-top">
         <view class="avatar">会</view>
         <view class="who">
-          <text class="nick">{{ mode === "invite" ? "绑定码登录" : "会员注册" }}</text>
-          <text class="sub">{{ mode === "invite" ? "门店已录入的会员或教练，填写手机号和绑定码，不用注册" : "填写姓名和手机号，并完成人脸核验" }}</text>
-          <text class="sub">{{ mode === "invite" ? "绑定后只用微信进入，绑定码随即失效" : "注册后不能修改" }}</text>
+          <text class="nick">手机号登录</text>
+          <text class="sub">使用本机号一键登录，无需验证码</text>
+          <text class="sub">或使用其他手机号验证码登录</text>
         </view>
-      </view>
-    </view>
-
-    <view class="modes">
-      <view class="mode" :class="{ on: mode === 'register' }" @click="mode = 'register'">新用户注册</view>
-      <view class="mode" :class="{ on: mode === 'invite' }" @click="mode = 'invite'">绑定码登录</view>
-    </view>
-
-    <template v-if="mode === 'invite'">
-      <view class="card">
-        <text class="label tight">手机号</text>
-        <input v-model="phone" type="number" maxlength="11" placeholder="11 位手机号" />
-        <text class="label">绑定码</text>
-        <input v-model="inviteCode" maxlength="8" placeholder="8 位绑定码" />
-      </view>
-      <button class="primary" :class="{ wait: !canClaim }" @click="submitInvite">登录并绑定微信</button>
-      <view class="cancel" @click="leave">暂不登录，先看看</view>
-    </template>
-
-    <template v-else>
-    <view class="card">
-      <view class="face-row">
-        <view class="face" @click="shoot">
-          <image v-if="preview" class="preview" :src="preview" mode="aspectFill" />
-          <view v-else class="face-empty">
-            <text class="face-mark">拍</text>
-            <text class="face-tip">拍摄正脸</text>
-          </view>
-        </view>
-        <view class="face-side">
-          <text class="label tight">人脸照片</text>
-          <text class="hint">请正对镜头拍摄，不能从相册选择。</text>
-          <view v-if="faceReady" class="ok-pill">
-            <text class="ok-mark">✓</text>
-            <text>人脸核查成功</text>
-          </view>
-          <button class="ghost" @click="shoot">{{ faceReady ? "重新拍摄" : "拍摄正脸" }}</button>
-        </view>
-      </view>
-    </view>
-
-    <view class="card">
-      <text class="label">姓名</text>
-      <input v-model="name" maxlength="32" placeholder="真实姓名" />
-      <text class="label">手机号</text>
-      <input v-model="phone" type="number" maxlength="11" placeholder="11 位手机号" />
-      <text class="label">验证码</text>
-      <view class="code-row">
-        <input v-model="smsCode" type="number" maxlength="6" placeholder="验证码" />
-        <button class="mini" size="mini" @click="sendCode">{{ sending ? "发送中" : "获取验证码" }}</button>
       </view>
     </view>
 
@@ -67,40 +17,46 @@
       <text class="link" @click.stop="openPrivacy">《隐私保护指引》</text>
     </view>
 
-    <button class="primary" :class="{ wait: !canRegister }" @click="submit">注册</button>
-    <view class="cancel" @click="leave">暂不注册，先看看</view>
+    <button v-if="agreed" class="primary" open-type="getPhoneNumber" @getphonenumber="onWechatPhone">
+      使用本机号登录
+    </button>
+    <button v-else class="primary wait" @click="needAgree">使用本机号登录</button>
+
+    <view class="other" @click="showSms = !showSms">
+      <text>其他号码登录</text>
+      <text class="arrow">{{ showSms ? "收起" : "展开" }}</text>
+    </view>
+
+    <template v-if="showSms">
+      <view class="card">
+        <text class="label">手机号</text>
+        <input v-model="phone" type="number" maxlength="11" placeholder="11 位手机号" />
+        <text class="label">验证码</text>
+        <view class="code-row">
+          <input v-model="smsCode" type="number" maxlength="6" placeholder="验证码" />
+          <button class="mini" size="mini" @click="sendCode">{{ sending ? "发送中" : "获取验证码" }}</button>
+        </view>
+      </view>
+      <button class="primary" :class="{ wait: !canSmsLogin }" @click="submitSmsLogin">登录</button>
     </template>
+
+    <view class="cancel" @click="leave">暂不登录，先看看</view>
   </view>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { onLoad } from "@dcloudio/uni-app";
-import {
-  facePreviewBase64,
-  presignFace,
-  privacyUrl,
-  claimMember,
-  registerMember,
-  saveSession,
-  sendSms,
-  silentEnter,
-  uploadFace,
-  verifyFace,
-} from "../../api/auth";
+import { loginByPhone, loginBySms, privacyUrl, saveSession, sendSms, silentEnter, type LoginResult } from "../../api/auth";
 
 const DEV_CODE = "246810"; // 测试逻辑：仅非微信正式版预填。见 开发文档/前端测试逻辑-待删除.md
-const mode = ref<"register" | "invite">("register");
 const agreed = ref(false);
-const privacy = ref("");
-const preview = ref("");
-const faceReady = ref(false);
-const name = ref("");
+const showSms = ref(false);
 const phone = ref("");
 const smsCode = ref("");
-const inviteCode = ref("");
-const smsOk = ref(false);
 const sending = ref(false);
+const smsOk = ref(false);
+const privacy = ref("");
 const localTest = ref(false);
 
 function allowLocal() {
@@ -114,16 +70,9 @@ function allowLocal() {
 
 const phoneText = computed(() => String(phone.value ?? "").replace(/\D/g, ""));
 const codeText = computed(() => String(smsCode.value ?? "").replace(/\D/g, ""));
-const inviteText = computed(() => String(inviteCode.value ?? "").trim().toUpperCase());
-const canClaim = computed(() => /^1\d{10}$/.test(phoneText.value) && /^[A-Z2-9]{8}$/.test(inviteText.value));
-const canRegister = computed(() => agreed.value
-  && faceReady.value
-  && String(name.value ?? "").trim().length > 0
-  && /^1\d{10}$/.test(phoneText.value)
-  && codeText.value.length >= 4);
+const canSmsLogin = computed(() => agreed.value && /^1\d{10}$/.test(phoneText.value) && codeText.value.length >= 4);
 
-onLoad(async (query) => {
-  mode.value = query?.mode === "invite" ? "invite" : "register";
+onLoad(async () => {
   localTest.value = allowLocal();
   if (localTest.value) {
     smsCode.value = DEV_CODE;
@@ -133,16 +82,16 @@ onLoad(async (query) => {
     uni.switchTab({ url: "/pages/home/home" });
     return;
   }
-  faceReady.value = !!entered?.faceReady;
-  if (faceReady.value) {
-    preview.value = await facePreviewBase64().catch(() => "");
-  }
   try {
     privacy.value = (await privacyUrl()).url || "";
   } catch {
     privacy.value = "";
   }
 });
+
+function needAgree() {
+  uni.showToast({ title: "请先同意隐私保护指引", icon: "none" });
+}
 
 function openPrivacy() {
   if (!privacy.value) {
@@ -152,44 +101,27 @@ function openPrivacy() {
   uni.navigateTo({ url: `/pages/webview/webview?url=${encodeURIComponent(privacy.value)}` });
 }
 
-function leave() {
-  uni.removeStorageSync("mpToken");
-  uni.removeStorageSync("mpTokenType");
-  uni.switchTab({ url: "/pages/home/home" });
-}
-
-async function shoot() {
-  if (localTest.value) {
-    // 测试逻辑：不打开相机，上传固定测试字节。见 开发文档/前端测试逻辑-待删除.md
-    const bytes = new Uint8Array(64);
-    bytes.fill(8);
-    await finishFace(bytes.buffer);
+function handleLogin(data: LoginResult) {
+  saveSession(data);
+  if (data.tokenType === "ACCESS") {
+    uni.switchTab({ url: "/pages/home/home" });
     return;
   }
-  uni.chooseImage({
-    count: 1,
-    sourceType: ["camera"],
-    sizeType: ["compressed"],
-    success(res) {
-      const path = res.tempFilePaths[0];
-      uni.getFileSystemManager().readFile({
-        filePath: path,
-        success(file) {
-          void finishFace(file.data as ArrayBuffer);
-        },
-      });
-    },
-  });
+  uni.navigateTo({ url: "/pages/register/register" });
 }
 
-async function finishFace(body: ArrayBuffer) {
-  const key = await presignFace();
-  await uploadFace(key.objectKey, body);
-  const result = await verifyFace(key.objectKey);
-  saveSession(result);
-  faceReady.value = result.registerStatus === "FACE_OK" || result.tokenType === "REGISTER";
-  preview.value = await facePreviewBase64().catch(() => "");
-  uni.showToast({ title: "人脸核验通过", icon: "none" });
+async function onWechatPhone(event: { detail: { code?: string } }) {
+  if (!agreed.value) {
+    uni.showToast({ title: "请先同意隐私保护指引", icon: "none" });
+    return;
+  }
+  const code = event.detail.code;
+  if (!code) {
+    uni.showToast({ title: "没有取得手机号", icon: "none" });
+    return;
+  }
+  const data = await loginByPhone(code);
+  handleLogin(data);
 }
 
 async function sendCode() {
@@ -207,57 +139,35 @@ async function sendCode() {
   }
 }
 
-function blockReason() {
-  if (!faceReady.value) {
-    return "请先完成人脸核验";
-  }
-  if (!String(name.value ?? "").trim()) {
-    return "请填写姓名";
-  }
-  if (!/^1\d{10}$/.test(phoneText.value)) {
-    return "请填写 11 位手机号";
-  }
-  if (codeText.value.length < 4) {
-    return "请填写验证码";
-  }
+async function submitSmsLogin() {
   if (!agreed.value) {
-    return "请先同意隐私保护指引";
+    uni.showToast({ title: "请先同意隐私保护指引", icon: "none" });
+    return;
   }
-  return "";
-}
-
-async function submitInvite() {
   if (!/^1\d{10}$/.test(phoneText.value)) {
     uni.showToast({ title: "请填写 11 位手机号", icon: "none" });
     return;
   }
-  if (!/^[A-Z2-9]{8}$/.test(inviteText.value)) {
-    uni.showToast({ title: "请填写 8 位绑定码", icon: "none" });
+  if (codeText.value.length < 4) {
+    uni.showToast({ title: "请填写验证码", icon: "none" });
     return;
   }
-  const data = await claimMember({ phone: phoneText.value, inviteCode: inviteText.value });
-  saveSession({ tokenType: "ACCESS", accessToken: data.accessToken });
-  uni.showToast({ title: "登录成功", icon: "none" });
-  setTimeout(() => uni.switchTab({ url: "/pages/home/home" }), 500);
+  if (!smsOk.value) {
+    try {
+      await sendSms(phoneText.value);
+      smsOk.value = true;
+    } catch {
+      return;
+    }
+  }
+  const data = await loginBySms(phoneText.value, codeText.value);
+  handleLogin(data);
 }
 
-async function submit() {
-  const reason = blockReason();
-  if (reason) {
-    uni.showToast({ title: reason, icon: "none" });
-    return;
-  }
-  await sendSms(phoneText.value);
-  smsOk.value = true;
-  const data = await registerMember({
-    name: String(name.value).trim(),
-    phone: phoneText.value,
-    smsCode: codeText.value,
-    privacyAgreed: true,
-  });
-  saveSession({ tokenType: "ACCESS", accessToken: data.accessToken });
-  uni.showToast({ title: data.memberNo ? `会员编号 ${data.memberNo}` : "注册成功", icon: "none" });
-  setTimeout(() => uni.switchTab({ url: "/pages/home/home" }), 500);
+function leave() {
+  uni.removeStorageSync("mpToken");
+  uni.removeStorageSync("mpTokenType");
+  uni.switchTab({ url: "/pages/home/home" });
 }
 </script>
 
@@ -285,68 +195,18 @@ async function submit() {
 .who { flex: 1; min-width: 0; }
 .nick { display: block; font-size: 36rpx; font-weight: 700; }
 .sub { display: block; margin-top: 6rpx; color: rgba(255, 255, 255, 0.72); font-size: 24rpx; line-height: 1.5; }
-.modes { display: flex; gap: 12rpx; margin-top: 20rpx; }
-.mode { flex: 1; height: 72rpx; line-height: 72rpx; text-align: center; border-radius: 16rpx; background: #fff; color: #57534e; border: 1px solid #eceff3; font-size: 26rpx; font-weight: 700; }
-.mode.on { background: #1f2937; color: #fff; border-color: #1f2937; }
-.card { margin-top: 24rpx; padding: 28rpx 24rpx; border-radius: 20rpx; background: #fff; border: 1px solid #eceff3; }
-.face-row { display: flex; align-items: center; gap: 24rpx; }
-.face {
-  width: 200rpx;
-  height: 240rpx;
-  border-radius: 20rpx;
-  overflow: hidden;
-  background: #f8fafc;
-  border: 2rpx dashed #fdba74;
-  flex-shrink: 0;
-}
-.preview { width: 100%; height: 100%; }
-.face-empty { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8rpx; }
-.face-mark {
-  width: 72rpx;
-  height: 72rpx;
-  border-radius: 50%;
-  background: #fff7ed;
-  color: #c2410c;
-  text-align: center;
-  line-height: 72rpx;
-  font-size: 28rpx;
-  font-weight: 800;
-}
-.face-tip { color: #8a8f98; font-size: 22rpx; }
-.face-side { flex: 1; min-width: 0; }
-.hint { display: block; margin-top: 8rpx; color: #8a8f98; font-size: 22rpx; line-height: 1.5; }
-.ok-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 8rpx;
-  margin-top: 16rpx;
-  padding: 8rpx 16rpx;
-  border-radius: 999rpx;
-  background: #ecfdf3;
-  color: #15803d;
-  font-size: 24rpx;
-  font-weight: 700;
-}
-.ok-mark {
-  width: 28rpx;
-  height: 28rpx;
-  border-radius: 50%;
-  background: #16a34a;
-  color: #fff;
-  text-align: center;
-  line-height: 28rpx;
-  font-size: 18rpx;
-}
-.label { display: block; margin: 20rpx 0 10rpx; font-size: 26rpx; font-weight: 700; }
-.label.tight { margin-top: 0; }
-input { background: #f8fafc; }
-.code-row { display: flex; gap: 12rpx; align-items: center; }
-.code-row input { flex: 1; }
-.mini { flex-shrink: 0; margin: 0; }
-.ghost { margin-top: 16rpx; height: 64rpx; background: #fff7ed; color: #c2410c; font-size: 26rpx; }
 .agree-line { display: flex; align-items: center; margin-top: 28rpx; font-size: 26rpx; }
 .link { margin-left: 4rpx; color: #ea580c; font-size: 26rpx; }
 .primary { margin-top: 20rpx; }
 .primary.wait { opacity: 0.45; }
-.cancel { margin-top: 8rpx; padding: 20rpx; text-align: center; color: #8a8f98; font-size: 26rpx; }
+.other { display: flex; align-items: center; justify-content: center; gap: 8rpx; margin-top: 28rpx; color: #ea580c; font-size: 26rpx; }
+.arrow { color: #8a8f98; font-size: 24rpx; }
+.card { margin-top: 24rpx; padding: 28rpx 24rpx; border-radius: 20rpx; background: #fff; border: 1px solid #eceff3; }
+.label { display: block; margin: 20rpx 0 10rpx; font-size: 26rpx; font-weight: 700; }
+.label:first-child { margin-top: 0; }
+input { background: #f8fafc; }
+.code-row { display: flex; gap: 12rpx; align-items: center; }
+.code-row input { flex: 1; }
+.mini { flex-shrink: 0; margin: 0; }
+.cancel { margin-top: 32rpx; padding: 20rpx; text-align: center; color: #8a8f98; font-size: 26rpx; }
 </style>

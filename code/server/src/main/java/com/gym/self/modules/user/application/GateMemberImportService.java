@@ -192,8 +192,6 @@ public class GateMemberImportService {
         user.setNickname(clipName(name));
         user.setPhone(freePhone(phone));
         user.setMemberNo(memberNo);
-        user.setInviteCode(adminMemberService.newInviteCode());
-        user.setInviteFail(0);
         user.setRegisterStatus("ACTIVE");
         user.setRegisteredAt(now);
         user.setStatus("ACTIVE");

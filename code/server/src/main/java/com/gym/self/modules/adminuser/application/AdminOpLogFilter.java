@@ -46,7 +46,7 @@ public class AdminOpLogFilter extends OncePerRequestFilter {
         }
         return "POST".equals(method) && "/api/admin/members".equals(uri)
                 || "POST".equals(method) && uri.matches("/api/admin/members/\\d+/grants")
-                || "POST".equals(method) && uri.matches("/api/admin/members/\\d+/invite")
+                || "POST".equals(method) && uri.matches("/api/admin/members/\\d+/unbind")
                 || "PUT".equals(method) && uri.matches("/api/admin/members/\\d+/phone")
                 || "PUT".equals(method) && uri.matches("/api/admin/members/\\d+/name")
                 || "POST".equals(method) && "/api/admin/members/import".equals(uri);

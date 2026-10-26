@@ -3,6 +3,7 @@ package com.gym.self.modules.shop;
 import com.gym.self.common.api.ApiResponse;
 import com.gym.self.common.api.BizException;
 import com.gym.self.modules.adminuser.auth.CurrentAdmin;
+import com.gym.self.modules.adminuser.auth.StoreScope;
 import com.gym.self.modules.order.application.OrderService;
 import com.gym.self.modules.user.auth.CurrentMp;
 import jakarta.validation.Valid;
@@ -67,8 +68,11 @@ public class ShopController {
     }
 
     @GetMapping("/api/mp/equipment")
-    public ApiResponse<List<Map<String, Object>>> equipment(@RequestParam String storeId) {
-        return ApiResponse.ok(shopService.equipmentOf(parse(storeId)));
+    public ApiResponse<Map<String, Object>> equipment(@RequestParam(required = false) String storeId,
+                                                      @RequestParam(required = false) String keyword,
+                                                      @RequestParam(defaultValue = "1") int page) {
+        Long scoped = storeId == null || storeId.isBlank() ? null : parse(storeId);
+        return ApiResponse.ok(shopService.equipmentVideos(scoped, keyword, page));
     }
 
     @GetMapping("/api/mp/equipment/by-code")
@@ -214,11 +218,23 @@ public class ShopController {
         return ApiResponse.ok(null);
     }
 
+    @GetMapping("/api/admin/channels-finder")
+    public ApiResponse<Map<String, String>> channelsFinder() {
+        StoreScope.requireMaster(CurrentAdmin.get());
+        return ApiResponse.ok(Map.of("finderId", shopService.channelsFinderDefault()));
+    }
+
+    @PutMapping("/api/admin/channels-finder")
+    public ApiResponse<Void> saveChannelsFinder(@RequestBody Map<String, String> body) {
+        shopService.saveChannelsFinderDefault(CurrentAdmin.get(), body == null ? "" : body.get("finderId"));
+        return ApiResponse.ok(null);
+    }
+
     @PostMapping("/api/admin/equipment")
     public ApiResponse<IdView> equipmentSave(@Valid @RequestBody EquipmentRequest request) {
         return ApiResponse.ok(new IdView(shopService.saveEquipment(CurrentAdmin.get(),
                 request.id() == null || request.id().isBlank() ? null : parse(request.id()),
-                parse(request.storeId()), request.code(), request.name(), request.intro(), request.imageUrl(), request.videoUrl())));
+                parse(request.storeId()), request.code(), request.name(), request.intro(), request.imageUrl(), request.feedId(), request.coverUrl())));
     }
 
     @GetMapping("/api/admin/equipment")
@@ -458,7 +474,7 @@ public class ShopController {
     public record StatusRequest(@NotBlank String status) {
     }
 
-    public record EquipmentRequest(String id, @NotBlank String storeId, @NotBlank String code, @NotBlank String name, String intro, String imageUrl, String videoUrl) {
+    public record EquipmentRequest(String id, @NotBlank String storeId, @NotBlank String code, @NotBlank String name, String intro, String imageUrl, String feedId, String coverUrl) {
     }
 
     public record GrouponRuleRequest(@NotBlank String storeId, @NotBlank String platform, @NotBlank String code, @NotBlank String cardProductId) {

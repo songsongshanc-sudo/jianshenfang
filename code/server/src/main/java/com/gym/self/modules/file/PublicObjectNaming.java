@@ -8,13 +8,11 @@ final class PublicObjectNaming {
     }
 
     static void validate(String biz, String contentType, byte[] body) {
-        boolean video = "EQUIPMENT_VIDEO".equals(biz);
-        int limit = video ? 200 * 1024 * 1024 : 5 * 1024 * 1024;
-        if (body == null || body.length == 0 || body.length > limit) {
-            throw BizException.badRequest(video ? "视频大小需在 200MB 以内" : "图片大小需在 5MB 以内");
+        if (body == null || body.length == 0 || body.length > 5 * 1024 * 1024) {
+            throw BizException.badRequest("图片大小需在 5MB 以内");
         }
         folder(biz);
-        extension(biz, contentType);
+        extension(contentType);
     }
 
     static String folder(String biz) {
@@ -22,7 +20,7 @@ final class PublicObjectNaming {
             case "BANNER" -> "banner";
             case "COVER" -> "cover";
             case "GUIDE" -> "guide";
-            case "EQUIPMENT", "EQUIPMENT_VIDEO" -> "equipment";
+            case "EQUIPMENT" -> "equipment";
             case "RICH" -> "rich";
             case "SERVICE_GUIDE" -> "service-guide";
             case "COACH", "CERT" -> "coach";
@@ -31,15 +29,7 @@ final class PublicObjectNaming {
         };
     }
 
-    static String extension(String biz, String contentType) {
-        if ("EQUIPMENT_VIDEO".equals(biz)) {
-            return switch (contentType) {
-                case "video/mp4" -> ".mp4";
-                case "video/webm" -> ".webm";
-                case "video/quicktime" -> ".mov";
-                default -> throw BizException.badRequest("只支持 mp4、webm、mov");
-            };
-        }
+    static String extension(String contentType) {
         return switch (contentType) {
             case "image/jpeg" -> ".jpg";
             case "image/png" -> ".png";

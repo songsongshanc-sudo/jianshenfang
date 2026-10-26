@@ -66,7 +66,7 @@ router.beforeEach((to) => {
   if (to.path === "/login" && session.token) {
     return "/";
   }
-  const masterOnly = ["/stores", "/accounts", "/banners", "/notices", "/agreements", "/service-guides", "/configs", "/equipment", "/franchise"];
+  const masterOnly = ["/stores", "/accounts", "/banners", "/notices", "/agreements", "/service-guides", "/configs", "/franchise"];
   if (session.role === "STORE" && masterOnly.includes(to.path)) {
     return "/";
   }

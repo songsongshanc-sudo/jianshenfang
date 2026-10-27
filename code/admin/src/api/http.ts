@@ -11,7 +11,7 @@ export interface ApiBody<T> {
 
 export const http = axios.create({
   baseURL: "/",
-  timeout: 15000
+  timeout: 30000
 });
 
 http.interceptors.request.use((config) => {

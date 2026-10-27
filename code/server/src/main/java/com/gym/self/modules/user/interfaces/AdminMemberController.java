@@ -7,6 +7,7 @@ import com.gym.self.modules.user.application.AdminMemberService;
 import com.gym.self.modules.user.application.GateMemberImportService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -69,6 +70,35 @@ public class AdminMemberController {
     public ApiResponse<Void> grants(@PathVariable String id, @Valid @RequestBody GrantRequest request) {
         adminMemberService.grantMore(CurrentAdmin.get(), parse(id), parse(request.storeId()),
                 parseIds(request.cardIds()), parseIds(request.packIds()));
+        return ApiResponse.ok(null);
+    }
+
+    @GetMapping("/api/admin/members/{id}/grants")
+    public ApiResponse<Map<String, Object>> memberGrants(@PathVariable String id) {
+        return ApiResponse.ok(adminMemberService.memberGrants(CurrentAdmin.get(), parse(id)));
+    }
+
+    @PostMapping("/api/admin/members/{id}/suspend")
+    public ApiResponse<Void> suspend(@PathVariable String id) {
+        adminMemberService.suspendMember(CurrentAdmin.get(), parse(id));
+        return ApiResponse.ok(null);
+    }
+
+    @PostMapping("/api/admin/members/{id}/resume")
+    public ApiResponse<Void> resume(@PathVariable String id) {
+        adminMemberService.resumeMember(CurrentAdmin.get(), parse(id));
+        return ApiResponse.ok(null);
+    }
+
+    @DeleteMapping("/api/admin/members/{id}/cards/{membershipId}")
+    public ApiResponse<Void> removeCard(@PathVariable String id, @PathVariable String membershipId) {
+        adminMemberService.removeCard(CurrentAdmin.get(), parse(id), parse(membershipId));
+        return ApiResponse.ok(null);
+    }
+
+    @DeleteMapping("/api/admin/members/{id}/packs/{accountId}")
+    public ApiResponse<Void> removePack(@PathVariable String id, @PathVariable String accountId) {
+        adminMemberService.removePack(CurrentAdmin.get(), parse(id), parse(accountId));
         return ApiResponse.ok(null);
     }
 

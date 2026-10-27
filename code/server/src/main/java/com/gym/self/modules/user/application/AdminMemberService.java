@@ -7,6 +7,7 @@ import com.gym.self.common.time.TimeProvider;
 import com.gym.self.modules.adminuser.application.AdminOpLog;
 import com.gym.self.modules.adminuser.auth.AdminPrincipal;
 import com.gym.self.modules.adminuser.auth.StoreScope;
+import com.gym.self.modules.gate.GateFaceSync;
 import com.gym.self.modules.content.domain.AppConfig;
 import com.gym.self.modules.content.domain.AppConfigMapper;
 import com.gym.self.modules.order.application.OrderService;
@@ -36,6 +37,7 @@ public class AdminMemberService {
     private final FaceVendorPort faceVendorPort;
     private final MemberNoService memberNoService;
     private final OrderService orderService;
+    private final GateFaceSync gateFaceSync;
     private final AppConfigMapper appConfigMapper;
     private final Snowflake snowflake;
     private final TimeProvider timeProvider;
@@ -43,7 +45,7 @@ public class AdminMemberService {
 
     public AdminMemberService(JdbcTemplate jdbc, GymUserMapper userMapper, UserFaceMapper userFaceMapper,
                               FaceFileService faceFileService, FaceVendorPort faceVendorPort,
-                              MemberNoService memberNoService, OrderService orderService,
+                              MemberNoService memberNoService, OrderService orderService, GateFaceSync gateFaceSync,
                               AppConfigMapper appConfigMapper, Snowflake snowflake, TimeProvider timeProvider,
                               AdminOpLog adminOpLog) {
         this.jdbc = jdbc;
@@ -53,6 +55,7 @@ public class AdminMemberService {
         this.faceVendorPort = faceVendorPort;
         this.memberNoService = memberNoService;
         this.orderService = orderService;
+        this.gateFaceSync = gateFaceSync;
         this.appConfigMapper = appConfigMapper;
         this.snowflake = snowflake;
         this.timeProvider = timeProvider;
@@ -62,10 +65,11 @@ public class AdminMemberService {
     public List<Map<String, Object>> list(AdminPrincipal actor, Long storeId, String name, String phone) {
         Long scoped = StoreScope.requiredStore(actor, storeId);
         StringBuilder sql = new StringBuilder("""
-                SELECT u.id, u.nickname, u.phone, u.member_no, u.created_store_id, u.openid, s.name AS store_name
+                SELECT u.id, u.nickname, u.phone, u.member_no, u.register_status, u.status, u.created_store_id, u.openid, s.name AS store_name
                 FROM `user` u
                 LEFT JOIN store s ON s.id = u.created_store_id
-                WHERE u.register_status = 'ACTIVE' AND u.member_no IS NOT NULL AND u.member_no <> ''
+                WHERE ((u.member_no IS NOT NULL AND u.member_no <> '')
+                    OR (u.phone IS NOT NULL AND u.phone <> ''))
                 """);
         List<Object> args = new ArrayList<>();
         if (scoped != null) {
@@ -87,13 +91,15 @@ public class AdminMemberService {
             sql.append(" AND u.phone LIKE ?");
             args.add("%" + phone.trim() + "%");
         }
-        sql.append(" ORDER BY u.id DESC LIMIT 200");
+        sql.append(" ORDER BY u.id DESC");
         return jdbc.queryForList(sql.toString(), args.toArray()).stream().map(row -> {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", String.valueOf(row.get("id")));
             m.put("name", row.get("nickname"));
             m.put("phone", row.get("phone"));
             m.put("memberNo", row.get("member_no"));
+            m.put("registerStatus", row.get("register_status"));
+            m.put("status", row.get("status") == null ? "ACTIVE" : String.valueOf(row.get("status")));
             Object store = row.get("created_store_id");
             m.put("storeId", store == null ? null : String.valueOf(store));
             m.put("storeName", row.get("store_name"));
@@ -109,8 +115,12 @@ public class AdminMemberService {
         StoreScope.requireStoreAccess(actor, storeId);
         String realName = requireName(name);
         String mobile = requirePhone(phone);
-        if (userMapper.selectCount(new LambdaQueryWrapper<GymUser>().eq(GymUser::getPhone, mobile)) > 0) {
-            throw BizException.rejected("该手机号已是会员，请在列表中找到后编辑");
+        GymUser existing = userMapper.selectOne(new LambdaQueryWrapper<GymUser>().eq(GymUser::getPhone, mobile));
+        if (existing != null) {
+            if (actor.master() || visibleTo(actor, existing.getId())) {
+                throw BizException.rejected("该手机号已是会员，请在列表里搜索这个手机号");
+            }
+            throw BizException.rejected("该手机号已登记，但不在当前门店的会员列表里");
         }
         byte[] photo = decodeFace(faceBase64);
         LocalDateTime now = timeProvider.now();
@@ -182,10 +192,7 @@ public class AdminMemberService {
     @Transactional
     public void grantMore(AdminPrincipal actor, long userId, long storeId, List<Long> cardIds, List<Long> packIds) {
         StoreScope.requireStoreAccess(actor, storeId);
-        GymUser user = userMapper.selectById(userId);
-        if (user == null || !"ACTIVE".equals(user.getRegisterStatus())) {
-            throw BizException.badRequest("会员不存在");
-        }
+        GymUser user = mustVisible(actor, userId);
         if ((cardIds == null || cardIds.isEmpty()) && (packIds == null || packIds.isEmpty())) {
             throw BizException.badRequest("请选择会员卡或课程");
         }
@@ -195,6 +202,152 @@ public class AdminMemberService {
         Long logStore = actor.storeId() != null ? actor.storeId() : storeId;
         adminOpLog.record(actor, logStore, userId, userId, "补开会员卡或课程",
                 "会员 " + display(user) + "，会员卡 " + cards + " 张，课程 " + packs + " 个");
+    }
+
+    public Map<String, Object> memberGrants(AdminPrincipal actor, long userId) {
+        mustVisible(actor, userId);
+        LocalDateTime now = timeProvider.now();
+        Long storeId = actor.master() ? null : actor.storeId();
+        String cardSql = """
+                SELECT m.id, c.name, m.end_at, s.name AS store_name
+                FROM membership m
+                JOIN card_product c ON c.id = m.card_product_id
+                JOIN store s ON s.id = m.store_id
+                WHERE m.user_id = ? AND m.end_at > ? AND m.status <> 'REVOKED'
+                """;
+        String packSql = """
+                SELECT a.id, p.name, a.remaining, s.name AS store_name
+                FROM lesson_account a
+                JOIN course_pack p ON p.id = a.pack_id
+                JOIN store s ON s.id = p.store_id
+                WHERE a.user_id = ? AND a.remaining > 0
+                """;
+        List<Object> cardArgs = new ArrayList<>();
+        cardArgs.add(userId);
+        cardArgs.add(now);
+        List<Object> packArgs = new ArrayList<>();
+        packArgs.add(userId);
+        if (storeId != null) {
+            cardSql += " AND m.store_id = ?";
+            packSql += " AND p.store_id = ?";
+            cardArgs.add(storeId);
+            packArgs.add(storeId);
+        }
+        cardSql += " ORDER BY m.id";
+        packSql += " ORDER BY a.id";
+        List<Map<String, Object>> cards = jdbc.queryForList(cardSql, cardArgs.toArray()).stream().map(row -> {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("id", String.valueOf(row.get("id")));
+            item.put("name", row.get("name"));
+            item.put("storeName", row.get("store_name"));
+            String endAt = row.get("end_at") == null ? "" : String.valueOf(row.get("end_at"));
+            item.put("endAt", endAt.length() >= 10 ? endAt.substring(0, 10) : endAt);
+            return item;
+        }).toList();
+        List<Map<String, Object>> packs = jdbc.queryForList(packSql, packArgs.toArray()).stream().map(row -> {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("id", String.valueOf(row.get("id")));
+            item.put("name", row.get("name"));
+            item.put("storeName", row.get("store_name"));
+            item.put("remaining", row.get("remaining"));
+            return item;
+        }).toList();
+        return Map.of("cards", cards, "packs", packs);
+    }
+
+    @Transactional
+    public void removeCard(AdminPrincipal actor, long userId, long membershipId) {
+        GymUser user = mustVisible(actor, userId);
+        List<Map<String, Object>> rows = jdbc.queryForList(
+                "SELECT user_id, store_id, status FROM membership WHERE id = ?", membershipId);
+        if (rows.isEmpty() || ((Number) rows.get(0).get("user_id")).longValue() != userId
+                || "REVOKED".equals(String.valueOf(rows.get(0).get("status")))) {
+            throw BizException.badRequest("会员卡不存在");
+        }
+        long storeId = ((Number) rows.get(0).get("store_id")).longValue();
+        StoreScope.requireStoreAccess(actor, storeId);
+        LocalDateTime now = timeProvider.now();
+        jdbc.update("UPDATE membership SET status = 'REVOKED', end_at = ? WHERE id = ?", now, membershipId);
+        gateFaceSync.onMembership(userId, storeId);
+        gateFaceSync.syncMembership(userId, storeId, "删除会员卡");
+        adminOpLog.record(actor, storeId, userId, membershipId, "删除会员卡", "会员 " + display(user) + " 的会员卡已删除");
+    }
+
+    @Transactional
+    public void removePack(AdminPrincipal actor, long userId, long accountId) {
+        GymUser user = mustVisible(actor, userId);
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT a.user_id, a.pack_id, a.remaining, p.store_id, p.name
+                FROM lesson_account a JOIN course_pack p ON p.id = a.pack_id
+                WHERE a.id = ?
+                """, accountId);
+        if (rows.isEmpty() || ((Number) rows.get(0).get("user_id")).longValue() != userId) {
+            throw BizException.badRequest("课程不存在");
+        }
+        int remaining = ((Number) rows.get(0).get("remaining")).intValue();
+        if (remaining <= 0) {
+            throw BizException.badRequest("课程不存在");
+        }
+        long storeId = ((Number) rows.get(0).get("store_id")).longValue();
+        StoreScope.requireStoreAccess(actor, storeId);
+        long packId = ((Number) rows.get(0).get("pack_id")).longValue();
+        LocalDateTime now = timeProvider.now();
+        jdbc.update("UPDATE lesson_account SET remaining = 0, updated_at = ? WHERE id = ?", now, accountId);
+        jdbc.update("INSERT INTO lesson_ledger (id, user_id, pack_id, delta, reason, created_at) VALUES (?,?,?,?,?,?)",
+                snowflake.next(), userId, packId, -remaining, "ADMIN_REMOVE", now);
+        adminOpLog.record(actor, storeId, userId, accountId, "删除课程",
+                "会员 " + display(user) + " 的课程「" + rows.get(0).get("name") + "」已删除，清掉 " + remaining + " 节");
+    }
+
+    @Transactional
+    public void suspendMember(AdminPrincipal actor, long userId) {
+        GymUser user = mustVisible(actor, userId);
+        if ("DISABLED".equals(user.getStatus())) {
+            return;
+        }
+        user.setStatus("DISABLED");
+        user.setUpdatedAt(timeProvider.now());
+        userMapper.updateById(user);
+        gateFaceSync.suspendPerson(user.getId(), user.getMemberNo(), gatesHolding(user));
+        Long storeId = actor.storeId() != null ? actor.storeId() : user.getCreatedStoreId();
+        adminOpLog.record(actor, storeId, userId, userId, "停用会员", "会员 " + display(user) + " 已停用");
+    }
+
+    @Transactional
+    public void resumeMember(AdminPrincipal actor, long userId) {
+        GymUser user = mustVisible(actor, userId);
+        if (!"DISABLED".equals(user.getStatus())) {
+            return;
+        }
+        user.setStatus("ACTIVE");
+        user.setUpdatedAt(timeProvider.now());
+        userMapper.updateById(user);
+        gateFaceSync.resumePerson(user.getId(), gatesHolding(user));
+        Long storeId = actor.storeId() != null ? actor.storeId() : user.getCreatedStoreId();
+        adminOpLog.record(actor, storeId, userId, userId, "恢复会员", "会员 " + display(user) + " 已恢复");
+    }
+
+    private List<com.gym.self.modules.gate.GateDevice> gatesHolding(GymUser user) {
+        long createdStoreId = user.getCreatedStoreId() == null ? 0L : user.getCreatedStoreId();
+        return jdbc.query("""
+                SELECT DISTINCT d.id, d.device_sn, d.name
+                FROM gate_device d
+                WHERE d.status = 'ENABLED' AND (
+                  EXISTS (
+                    SELECT 1 FROM gate_sync_task t
+                    WHERE t.device_id = d.id AND t.user_id = ?)
+                  OR d.store_id IN (SELECT m.store_id FROM membership m WHERE m.user_id = ?)
+                  OR d.store_id IN (SELECT v.store_id FROM visit_pass v WHERE v.user_id = ? AND v.store_id IS NOT NULL)
+                  OR d.store_id = ?
+                )
+                """, (rs, row) -> {
+            com.gym.self.modules.gate.GateDevice device = new com.gym.self.modules.gate.GateDevice();
+            device.setId(rs.getLong("id"));
+            device.setDeviceSn(rs.getString("device_sn"));
+            device.setName(rs.getString("name"));
+            device.setStatus("ENABLED");
+            return device;
+        }, user.getId(), user.getId(), user.getId(), createdStoreId);
     }
 
     public String privacyUrl() {
@@ -248,6 +401,10 @@ public class AdminMemberService {
                         ((Number) rows.get(0).get("price_fen")).longValue());
             }
         }
+        boolean grantedCard = cardIds != null && cardIds.stream().anyMatch(id -> id != null);
+        if (grantedCard) {
+            gateFaceSync.syncMembership(userId, storeId, "保存会员卡");
+        }
     }
 
     private void enrollFace(GymUser user, byte[] photo) {
@@ -270,13 +427,23 @@ public class AdminMemberService {
 
     private GymUser mustVisible(AdminPrincipal actor, long userId) {
         GymUser user = userMapper.selectById(userId);
-        if (user == null || !"ACTIVE".equals(user.getRegisterStatus()) || user.getMemberNo() == null) {
+        if (user == null || !listed(user)) {
             throw BizException.badRequest("会员不存在");
         }
+        if (!visibleTo(actor, userId)) {
+            throw BizException.badRequest("会员不存在");
+        }
+        return user;
+    }
+
+    private boolean visibleTo(AdminPrincipal actor, long userId) {
         if (actor.master()) {
-            return user;
+            return true;
         }
         Long storeId = actor.storeId();
+        if (storeId == null) {
+            return false;
+        }
         Integer hit = jdbc.queryForObject("""
                 SELECT COUNT(*) FROM `user` u
                 WHERE u.id = ? AND (u.created_store_id = ? OR EXISTS (
@@ -284,10 +451,13 @@ public class AdminMemberService {
                  OR EXISTS (
                     SELECT 1 FROM membership m WHERE m.user_id = u.id AND m.store_id = ?))
                 """, Integer.class, userId, storeId, storeId, storeId);
-        if (hit == null || hit == 0) {
-            throw BizException.badRequest("会员不存在");
-        }
-        return user;
+        return hit != null && hit > 0;
+    }
+
+    private static boolean listed(GymUser user) {
+        boolean phone = user.getPhone() != null && !user.getPhone().isBlank();
+        boolean memberNo = user.getMemberNo() != null && !user.getMemberNo().isBlank();
+        return phone || memberNo;
     }
 
     private static String display(GymUser user) {

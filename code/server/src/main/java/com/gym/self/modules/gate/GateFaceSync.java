@@ -25,6 +25,8 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +34,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 @Service
@@ -51,7 +54,7 @@ public class GateFaceSync {
     private final TimeProvider timeProvider;
     private final Executor gateExecutor;
     private final ObjectProvider<VisitService> visitService;
-    private final ConcurrentHashMap<String, Object> locks = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, ReentrantLock> locks = new ConcurrentHashMap<>();
 
     public GateFaceSync(GateDeviceMapper gateDeviceMapper, GateSyncTaskMapper taskMapper, MembershipMapper membershipMapper,
                         GymUserMapper userMapper, UserFaceMapper userFaceMapper, FaceFileService faceFileService,
@@ -131,24 +134,18 @@ public class GateFaceSync {
     }
 
     public void pushToken(String sn) {
-        gateExecutor.execute(() -> {
-            synchronized (lock(sn)) {
-                tuneToken(sn);
-            }
-        });
+        gateExecutor.execute(() -> withLock(sn, () -> tuneToken(sn)));
     }
 
     public void onConnected(String sn) {
-        synchronized (lock(sn)) {
+        withLock(sn, () -> {
             tune(sn);
             drain(sn);
-        }
+        });
     }
 
     public void flushDevice(String sn) {
-        synchronized (lock(sn)) {
-            drain(sn);
-        }
+        withLock(sn, () -> drain(sn));
     }
 
     public String status(long userId, Long storeId) {
@@ -248,6 +245,11 @@ public class GateFaceSync {
     }
 
     private void dispatch(GateDevice device, GateSyncTask task) {
+        GymUser member = userMapper.selectById(task.getUserId());
+        if (member != null && !"ACTIVE".equals(member.getStatus())) {
+            fail(task, "会员已停用");
+            return;
+        }
         LocalDateTime now = timeProvider.now();
         task.setStatus("SENT");
         task.setUpdatedAt(now);
@@ -350,6 +352,20 @@ public class GateFaceSync {
     }
 
     private void enqueue(long userId, long deviceId) {
+        GateDevice device = gateDeviceMapper.selectById(deviceId);
+        if (device == null || device.getDeviceSn() == null || device.getDeviceSn().isBlank()) {
+            return;
+        }
+        withLock(device.getDeviceSn(), () -> {
+            GymUser user = userMapper.selectById(userId);
+            if (user == null || !"ACTIVE".equals(user.getStatus())) {
+                return;
+            }
+            enqueueLocked(userId, deviceId);
+        });
+    }
+
+    private void enqueueLocked(long userId, long deviceId) {
         if (enrolled(userId) == null) {
             return;
         }
@@ -409,6 +425,80 @@ public class GateFaceSync {
         taskMapper.updateById(task);
     }
 
+    /**
+     * 从闸机删掉这个人，停用后本地人脸库里不再有他。闸机不在线或指令失败时抛错，调用方回滚数据库。
+     * 设备锁保持到当前事务结束，避免停用提交前又被补发回去。
+     */
+    public void suspendPerson(long userId, String memberNo, List<GateDevice> devices) {
+        if (memberNo == null || memberNo.isBlank() || devices == null || devices.isEmpty()) {
+            return;
+        }
+        ensureOnline(devices, "停用");
+        List<ReentrantLock> acquired = lockAll(devices);
+        List<GateDevice> removed = new ArrayList<>();
+        boolean handedOff = false;
+        try {
+            for (GateDevice device : devices) {
+                deleteOnDevice(device, memberNo, "停用");
+                parkOpenTasks(device.getId(), userId);
+                removed.add(device);
+            }
+            handOff(acquired);
+            handedOff = true;
+        } catch (RuntimeException exception) {
+            for (int i = removed.size() - 1; i >= 0; i--) {
+                try {
+                    pushNow(removed.get(i), userId, "停用");
+                } catch (RuntimeException restoreError) {
+                    log.warn("停用失败后，闸机人脸未能写回 {}", removed.get(i).getDeviceSn());
+                }
+            }
+            throw exception;
+        } finally {
+            if (!handedOff) {
+                unlockAll(acquired);
+            }
+        }
+    }
+
+    /**
+     * 按当前会员卡到期时间，把人脸重新下发到闸机。
+     */
+    public void resumePerson(long userId, List<GateDevice> devices) {
+        if (devices == null || devices.isEmpty()) {
+            return;
+        }
+        GymUser user = userMapper.selectById(userId);
+        if (user == null || user.getMemberNo() == null || user.getMemberNo().isBlank()) {
+            throw BizException.badRequest("没有会员编号");
+        }
+        ensureOnline(devices, "恢复");
+        List<ReentrantLock> acquired = lockAll(devices);
+        List<GateDevice> pushed = new ArrayList<>();
+        boolean handedOff = false;
+        try {
+            for (GateDevice device : devices) {
+                pushNow(device, userId, "恢复");
+                pushed.add(device);
+            }
+            handOff(acquired);
+            handedOff = true;
+        } catch (RuntimeException exception) {
+            for (int i = pushed.size() - 1; i >= 0; i--) {
+                try {
+                    deleteOnDevice(pushed.get(i), user.getMemberNo(), "恢复");
+                } catch (RuntimeException cleanupError) {
+                    log.warn("恢复失败后，闸机人脸未能撤下 {}", pushed.get(i).getDeviceSn());
+                }
+            }
+            throw exception;
+        } finally {
+            if (!handedOff) {
+                unlockAll(acquired);
+            }
+        }
+    }
+
     private UserFace enrolled(long userId) {
         return userFaceMapper.selectOne(new LambdaQueryWrapper<UserFace>()
                 .eq(UserFace::getUserId, userId)
@@ -427,8 +517,221 @@ public class GateFaceSync {
         return gateDeviceMapper.selectOne(new LambdaQueryWrapper<GateDevice>().eq(GateDevice::getDeviceSn, sn));
     }
 
-    private Object lock(String sn) {
-        return locks.computeIfAbsent(sn, key -> new Object());
+    /**
+     * 会员卡变更后立刻写到该门店已启用的闸机。有闸机不在线或写入失败时抛错，调用方回滚数据库。
+     * 停用中的会员应从闸机删除，避免到期时间被改回去。
+     */
+    public void syncMembership(long userId, long storeId, String action) {
+        GymUser user = userMapper.selectById(userId);
+        if (user == null || user.getMemberNo() == null || user.getMemberNo().isBlank()) {
+            return;
+        }
+        List<GateDevice> devices = enabled(storeId);
+        if (devices.isEmpty()) {
+            return;
+        }
+        ensureOnline(devices, action);
+        List<ReentrantLock> acquired = lockAll(devices);
+        boolean handedOff = false;
+        try {
+            for (GateDevice device : devices) {
+                if ("DISABLED".equals(user.getStatus())) {
+                    deleteOnDevice(device, user.getMemberNo(), action);
+                } else if (enrolled(userId) != null) {
+                    pushNow(device, userId, action);
+                } else {
+                    pushValidity(device, user, action);
+                }
+            }
+            handOff(acquired);
+            handedOff = true;
+        } finally {
+            if (!handedOff) {
+                unlockAll(acquired);
+            }
+        }
+    }
+
+    private void ensureOnline(List<GateDevice> devices, String action) {
+        LocalDateTime fresh = timeProvider.now().minusMinutes(3);
+        for (GateDevice device : devices) {
+            GateDevice current = device.getId() == null ? device : gateDeviceMapper.selectById(device.getId());
+            if (current == null) {
+                throw BizException.badRequest("闸机不在线，" + action + "失败");
+            }
+            boolean beat = current.getLastBeatAt() != null && current.getLastBeatAt().isAfter(fresh);
+            boolean socket = current.getDeviceSn() != null && !current.getDeviceSn().isBlank()
+                    && port.online(current.getDeviceSn());
+            if (!beat || !socket) {
+                String name = current.getName() == null || current.getName().isBlank() ? "闸机" : current.getName();
+                throw BizException.badRequest(name + "不在线，" + action + "失败");
+            }
+        }
+    }
+
+    private void deleteOnDevice(GateDevice device, String memberNo, String action) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("cmd", "delUser");
+        data.put("user_id", memberNo);
+        data.put("user_type", 0);
+        JsonNode reply = port.exchange(device.getDeviceSn(), data);
+        if (reply == null) {
+            throw BizException.badRequest("闸机不在线，" + action + "失败");
+        }
+        int code = reply.path("code").asInt(-1);
+        String message = reply.path("msg").asText("");
+        if (code != 0 && code != 6 && !message.contains("不存在") && !message.contains("未找到")) {
+            throw BizException.badRequest(message.isBlank() ? "闸机" + action + "失败" : "闸机" + action + "失败：" + message);
+        }
+    }
+
+    private void pushValidity(GateDevice device, GymUser user, String action) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("cmd", "editUser");
+        data.put("edit_mode", 1);
+        data.put("user_id", user.getMemberNo());
+        data.put("name", user.getNickname() == null || user.getNickname().isBlank() ? user.getMemberNo() : user.getNickname());
+        data.put("id_valid", validUntil(user.getId(), device.getStoreId()).format(MINUTE));
+        JsonNode reply = port.exchange(device.getDeviceSn(), data);
+        if (reply == null) {
+            throw BizException.badRequest("闸机不在线，" + action + "失败");
+        }
+        int code = reply.path("code").asInt(-1);
+        String message = reply.path("msg").asText("");
+        if (code == 0 || code == 6 || message.contains("不存在") || message.contains("未找到")) {
+            return;
+        }
+        throw BizException.badRequest(message.isBlank() ? "闸机" + action + "失败" : "闸机" + action + "失败：" + message);
+    }
+
+    private void pushNow(GateDevice device, long userId, String action) {
+        GateSyncTask probe = new GateSyncTask();
+        probe.setId(-1L);
+        probe.setUserId(userId);
+        probe.setDeviceId(device.getId());
+        Built built = build(device, probe);
+        if (built.error != null) {
+            throw BizException.badRequest(built.error);
+        }
+        built.data.put("cmd", "addUser");
+        built.data.put("user_type", 0);
+        built.data.put("mode", 0);
+        built.data.remove("edit_mode");
+        JsonNode reply = port.exchange(device.getDeviceSn(), built.data);
+        int code = reply == null ? -1 : reply.path("code").asInt(-1);
+        if (code != 0) {
+            built.data.put("cmd", "editUser");
+            built.data.put("edit_mode", 1);
+            built.data.remove("user_type");
+            built.data.remove("mode");
+            reply = port.exchange(device.getDeviceSn(), built.data);
+            code = reply == null ? -1 : reply.path("code").asInt(-1);
+        }
+        if (reply == null) {
+            throw BizException.badRequest("闸机不在线，" + action + "失败");
+        }
+        if (code != 0) {
+            String message = reply.path("msg").asText("");
+            throw BizException.badRequest(message.isBlank() ? "闸机" + action + "失败" : "闸机" + action + "失败：" + message);
+        }
+        markSynced(device.getId(), userId, String.valueOf(built.data.get("cmd")));
+    }
+
+    private void markSynced(long deviceId, long userId, String cmd) {
+        GateSyncTask task = taskMapper.selectOne(new LambdaQueryWrapper<GateSyncTask>()
+                .eq(GateSyncTask::getDeviceId, deviceId)
+                .eq(GateSyncTask::getUserId, userId)
+                .orderByDesc(GateSyncTask::getId)
+                .last("LIMIT 1"));
+        LocalDateTime now = timeProvider.now();
+        if (task == null) {
+            task = new GateSyncTask();
+            task.setId(snowflake.next());
+            task.setDeviceId(deviceId);
+            task.setUserId(userId);
+            task.setCmd(cmd);
+            task.setStatus("OK");
+            task.setAttempts(0);
+            task.setCreatedAt(now);
+            task.setUpdatedAt(now);
+            taskMapper.insert(task);
+            return;
+        }
+        task.setCmd(cmd);
+        task.setStatus("OK");
+        task.setLastError(null);
+        task.setUpdatedAt(now);
+        taskMapper.updateById(task);
+    }
+
+    private void parkOpenTasks(long deviceId, long userId) {
+        List<GateSyncTask> open = taskMapper.selectList(new LambdaQueryWrapper<GateSyncTask>()
+                .eq(GateSyncTask::getDeviceId, deviceId)
+                .eq(GateSyncTask::getUserId, userId)
+                .in(GateSyncTask::getStatus, "PENDING", "SENT"));
+        LocalDateTime now = timeProvider.now();
+        for (GateSyncTask task : open) {
+            task.setStatus("FAILED");
+            task.setLastError("会员已停用");
+            task.setUpdatedAt(now);
+            taskMapper.updateById(task);
+        }
+    }
+
+    private List<ReentrantLock> lockAll(List<GateDevice> devices) {
+        List<GateDevice> ordered = new ArrayList<>(devices);
+        ordered.sort(Comparator.comparing(device -> device.getDeviceSn() == null ? "" : device.getDeviceSn()));
+        List<ReentrantLock> acquired = new ArrayList<>();
+        try {
+            for (GateDevice device : ordered) {
+                ReentrantLock lock = lockOf(device.getDeviceSn());
+                lock.lock();
+                acquired.add(lock);
+            }
+            return acquired;
+        } catch (RuntimeException exception) {
+            unlockAll(acquired);
+            throw exception;
+        }
+    }
+
+    private void handOff(List<ReentrantLock> acquired) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            unlockAll(acquired);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            private boolean released;
+
+            @Override
+            public void afterCompletion(int status) {
+                if (released) {
+                    return;
+                }
+                released = true;
+                unlockAll(acquired);
+            }
+        });
+    }
+
+    private void unlockAll(List<ReentrantLock> acquired) {
+        for (int i = acquired.size() - 1; i >= 0; i--) {
+            acquired.get(i).unlock();
+        }
+    }
+
+    private void withLock(String sn, Runnable action) {
+        ReentrantLock lock = lockOf(sn);
+        lock.lock();
+        try {
+            action.run();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    private ReentrantLock lockOf(String sn) {
+        return locks.computeIfAbsent(sn, key -> new ReentrantLock());
     }
 
     private static void afterCommit(Runnable action) {

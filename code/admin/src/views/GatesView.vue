@@ -35,16 +35,12 @@
       <el-table-column prop="pendingCount" label="待同步" width="90" />
       <el-table-column prop="failedCount" label="失败" width="70" />
       <el-table-column prop="lastError" label="失败原因" />
-      <el-table-column label="签名" width="80">
-        <template #default="{ row }">{{ row.signed ? "已启用" : "未启用" }}</template>
-      </el-table-column>
       <el-table-column v-if="session.role === 'MASTER'" prop="secret" label="模拟密钥" />
       <el-table-column label="操作" width="320">
         <template #default="{ row }">
           <el-button v-if="session.role === 'MASTER'" link @click="openEdit(row)">编辑</el-button>
           <el-button link @click="retry(row.id)">重试失败</el-button>
           <el-button v-if="session.role === 'MASTER'" link @click="reset(row.id)">重置密钥</el-button>
-          <el-button v-if="session.role === 'MASTER'" link @click="token(row.id)">启用签名</el-button>
           <el-button v-if="session.role === 'MASTER'" link @click="toggle(row)">{{ row.status === "ENABLED" ? "停用" : "启用" }}</el-button>
           <el-button v-if="session.role === 'MASTER'" link type="danger" @click="remove(row)">删除</el-button>
         </template>
@@ -93,7 +89,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { onMounted, onUnmounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { http, type ApiBody } from "../api/http";
 import { useSessionStore } from "../stores/session";
@@ -112,7 +108,6 @@ interface Device {
   pendingCount: number;
   failedCount: number;
   lastError: string;
-  signed: boolean;
 }
 
 const session = useSessionStore();
@@ -124,7 +119,12 @@ const editVisible = ref(false);
 const sim = reactive({ sn: "", memberNo: "" });
 const simResult = ref("");
 
-onMounted(load);
+let timer = 0;
+onMounted(() => {
+  load();
+  timer = setInterval(load, 5000) as unknown as number;
+});
+onUnmounted(() => clearInterval(timer));
 
 async function load() {
   if (session.role === "MASTER") {
@@ -185,12 +185,6 @@ async function remove(row: Device) {
 async function retry(id: string) {
   await http.post(`/api/admin/gates/${id}/retry`);
   ElMessage.success("已重新排队");
-  await load();
-}
-
-async function token(id: string) {
-  const response = await http.post<ApiBody<{ token: string }>>(`/api/admin/gates/${id}/token`);
-  ElMessage.success("签名口令：" + response.data.data.token);
   await load();
 }
 

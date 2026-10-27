@@ -35,6 +35,7 @@ public class GateWebSocketHandler extends TextWebSocketHandler {
     public void afterConnectionEstablished(WebSocketSession session) {
         session.setTextMessageSizeLimit(1024 * 1024);
         session.setBinaryMessageSizeLimit(1024 * 1024);
+        log.info("闸机长连接建立 {}", session.getRemoteAddress());
     }
 
     @Override
@@ -44,6 +45,7 @@ public class GateWebSocketHandler extends TextWebSocketHandler {
             String cmd = node.path("cmd").asText("");
             if ("declare".equals(cmd)) {
                 String sn = node.path("sn").asText("");
+                log.info("收到闸机 declare sn={} version={}", sn, node.path("version_name").asText(""));
                 if (port.bind(sn, session, node.path("version_name").asText(""))) {
                     gateExecutor.execute(() -> gateFaceSync.onConnected(sn));
                 }

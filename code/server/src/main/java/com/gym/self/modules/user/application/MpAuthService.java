@@ -279,6 +279,9 @@ public class MpAuthService {
     }
 
     private LoginView formal(GymUser user) {
+        if (!"ACTIVE".equals(user.getStatus())) {
+            throw BizException.rejected("账号已停用");
+        }
         MpJwt.Issued access = mpJwt.access(user.getId());
         MpJwt.Issued refresh = mpJwt.refresh(user.getId());
         tokenStore.save(user.getId(), access.jti(), access.ttlSeconds());

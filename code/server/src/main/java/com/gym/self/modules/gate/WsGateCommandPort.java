@@ -49,6 +49,7 @@ public class WsGateCommandPort {
         device.setFirmware(firmware == null ? "" : firmware);
         device.setLastBeatAt(timeProvider.now());
         gateDeviceMapper.updateById(device);
+        log.info("闸机已绑定 sn={} session={}", sn, session.getId());
         return true;
     }
 
@@ -94,7 +95,7 @@ public class WsGateCommandPort {
         pending.put(id, future);
         Map<String, Object> envelope = new LinkedHashMap<>();
         envelope.put("cmd", "to_device");
-        envelope.put("from", id);
+        envelope.put("form", id);
         envelope.put("extra", "");
         envelope.put("to", sn);
         envelope.put("data", data);
@@ -112,9 +113,6 @@ public class WsGateCommandPort {
 
     public void complete(JsonNode node) {
         String to = node.path("to").asText("");
-        if (to.isBlank()) {
-            to = node.path("form").asText("");
-        }
         CompletableFuture<JsonNode> future = pending.remove(to);
         if (future != null) {
             future.complete(node.path("data"));

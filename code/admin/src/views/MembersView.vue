@@ -1,7 +1,7 @@
 <template>
   <div>
     <h1>会员</h1>
-    <p class="lead">手工录入的会员会记成已支付订单。会员用手机号在小程序登录。姓名和手机号可在编辑里修改，人脸不能改。</p>
+    <p class="lead">手工录入的会员会记成已支付订单。会员用手机号在小程序登录。姓名和手机号可在编辑里修改，人脸不能改。停用后资料保留，闸机不再识别，可以恢复。</p>
     <el-form :inline="true" class="toolbar">
       <el-form-item v-if="session.role === 'MASTER'" label="门店">
         <el-select v-model="filter.storeId" clearable placeholder="全部" style="width: 180px" @change="load">
@@ -21,6 +21,11 @@
       </el-table-column>
       <el-table-column prop="phone" label="手机号" width="140" />
       <el-table-column prop="memberNo" label="会员编号" width="120" />
+      <el-table-column label="状态" width="100">
+        <template #default="{ row }">
+          <el-tag :type="memberTag(row)">{{ memberLabel(row) }}</el-tag>
+        </template>
+      </el-table-column>
       <el-table-column label="微信" min-width="100">
         <template #default="{ row }">
           <span>{{ row.wechatBound ? "已绑定" : "未绑定" }}</span>
@@ -105,19 +110,33 @@
           </el-select>
         </el-form-item>
         <el-form-item label="会员卡">
-          <el-select v-model="grant.cardIds" multiple style="width: 100%">
-            <el-option v-for="card in cards" :key="card.id" :label="card.name" :value="card.id" />
-          </el-select>
+          <div class="grant-box">
+            <el-tag v-for="c in currentCards" :key="c.id" closable class="grant-tag" @close="removeCard(c)">{{ c.name }}{{ session.role === "MASTER" ? ` · ${c.storeName}` : "" }}{{ c.endAt ? `（至 ${c.endAt}）` : "" }}</el-tag>
+            <el-button v-if="!addingCard" link type="primary" @click="addingCard = true">添加会员卡</el-button>
+            <el-select v-else v-model="grant.cardIds" multiple placeholder="选择要新增的会员卡" style="width: 100%">
+              <el-option v-for="card in cards" :key="card.id" :label="card.name" :value="card.id" />
+            </el-select>
+          </div>
         </el-form-item>
         <el-form-item label="课程">
-          <el-select v-model="grant.packIds" multiple style="width: 100%">
-            <el-option v-for="pack in packs" :key="pack.id" :label="String(pack.name)" :value="String(pack.id)" />
-          </el-select>
+          <div class="grant-box">
+            <el-tag v-for="p in currentPacks" :key="p.id" closable class="grant-tag" @close="removePack(p)">{{ p.name }}{{ session.role === "MASTER" ? ` · ${p.storeName}` : "" }}（剩 {{ p.remaining }} 节）</el-tag>
+            <el-button v-if="!addingPack" link type="primary" @click="addingPack = true">添加课程</el-button>
+            <el-select v-else v-model="grant.packIds" multiple placeholder="选择要新增的课程" style="width: 100%">
+              <el-option v-for="pack in packs" :key="pack.id" :label="String(pack.name)" :value="String(pack.id)" />
+            </el-select>
+          </div>
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="grantOpen = false">取消</el-button>
-        <el-button type="primary" @click="saveGrant">保存</el-button>
+        <div class="dialog-footer">
+          <el-button v-if="grantStatus === 'DISABLED'" type="primary" @click="resumeMember">恢复会员</el-button>
+          <el-button v-else type="warning" @click="suspendMember">停用会员</el-button>
+          <div>
+            <el-button @click="grantOpen = false">取消</el-button>
+            <el-button type="primary" @click="saveGrant">保存</el-button>
+          </div>
+        </div>
       </template>
     </el-dialog>
   </div>
@@ -143,6 +162,11 @@ const grant = reactive({ userId: "", storeId: "", cardIds: [] as string[], packI
 const grantName = ref("");
 const grantPhone = ref("");
 const grantBound = ref(false);
+const grantStatus = ref("ACTIVE");
+const currentCards = ref<{ id: string; name: string; endAt: string; storeName: string }[]>([]);
+const currentPacks = ref<{ id: string; name: string; remaining: number; storeName: string }[]>([]);
+const addingCard = ref(false);
+const addingPack = ref(false);
 const importOpen = ref(false);
 const importing = ref(false);
 const importDeviceId = ref("");
@@ -156,6 +180,18 @@ onMounted(async () => {
   }
   await load();
 });
+
+function memberLabel(row: Record<string, any>) {
+  if (row.status === "DISABLED") return "停用";
+  if (row.registerStatus && row.registerStatus !== "ACTIVE") return "未完成";
+  return "在线";
+}
+
+function memberTag(row: Record<string, any>) {
+  if (row.status === "DISABLED") return "info";
+  if (row.registerStatus && row.registerStatus !== "ACTIVE") return "warning";
+  return "success";
+}
 
 async function load() {
   const response = await http.get<ApiBody<Record<string, any>[]>>("/api/admin/members", {
@@ -248,8 +284,69 @@ function openGrant(row: Record<string, any>) {
   grantName.value = row.name;
   grantPhone.value = row.phone;
   grantBound.value = !!row.wechatBound;
+  grantStatus.value = row.status === "DISABLED" ? "DISABLED" : "ACTIVE";
+  addingCard.value = false;
+  addingPack.value = false;
+  currentCards.value = [];
+  currentPacks.value = [];
   grantOpen.value = true;
   void loadProducts(grant.storeId);
+  void loadGrants(row.id);
+}
+
+async function loadGrants(userId: string) {
+  const response = await http.get<ApiBody<{
+    cards: { id: string; name: string; endAt: string; storeName: string }[];
+    packs: { id: string; name: string; remaining: number; storeName: string }[];
+  }>>(`/api/admin/members/${userId}/grants`);
+  currentCards.value = response.data.data.cards;
+  currentPacks.value = response.data.data.packs;
+}
+
+async function removeCard(card: { id: string; name: string }) {
+  await ElMessageBox.confirm(`确定删除会员卡「${card.name}」？删除后这张卡立即失效，并同步到闸机。闸机不在线时不会删除。`, "删除会员卡", { type: "warning" });
+  await http.delete(`/api/admin/members/${grant.userId}/cards/${card.id}`);
+  ElMessage.success("已删除");
+  await loadGrants(grant.userId);
+}
+
+async function removePack(pack: { id: string; name: string }) {
+  await ElMessageBox.confirm(`确定删除课程「${pack.name}」？剩余课时会清掉。`, "删除课程", { type: "warning" });
+  await http.delete(`/api/admin/members/${grant.userId}/packs/${pack.id}`);
+  ElMessage.success("已删除");
+  await loadGrants(grant.userId);
+}
+
+async function suspendMember() {
+  try {
+    await ElMessageBox.confirm(
+      `确定停用会员「${grantName.value || "未填"}」？停用后闸机不能再识别通过，会员资料仍保留，可以恢复。闸机不在线时不会停用。`,
+      "停用会员",
+      { type: "warning", confirmButtonText: "停用" },
+    );
+  } catch {
+    return;
+  }
+  await http.post(`/api/admin/members/${grant.userId}/suspend`);
+  ElMessage.success("已停用");
+  grantOpen.value = false;
+  await load();
+}
+
+async function resumeMember() {
+  try {
+    await ElMessageBox.confirm(
+      `确定恢复会员「${grantName.value || "未填"}」？恢复后会按现有会员卡重新下发到闸机。闸机不在线时不会恢复。`,
+      "恢复会员",
+      { type: "warning", confirmButtonText: "恢复" },
+    );
+  } catch {
+    return;
+  }
+  await http.post(`/api/admin/members/${grant.userId}/resume`);
+  ElMessage.success("已恢复");
+  grantOpen.value = false;
+  await load();
 }
 
 async function loadGrantProducts() {
@@ -281,10 +378,14 @@ async function saveGrant() {
   ElMessage.success("已补开");
   grantOpen.value = false;
 }
+
 </script>
 
 <style scoped>
 .lead { color: #78716c; margin: 0 0 16px; }
 .toolbar { margin-bottom: 12px; }
 .face { display: block; width: 96px; height: 96px; object-fit: cover; margin-top: 8px; border-radius: 8px; }
+.grant-box { width: 100%; }
+.grant-tag { margin-right: 8px; margin-bottom: 4px; }
+.dialog-footer { display: flex; justify-content: space-between; width: 100%; }
 </style>

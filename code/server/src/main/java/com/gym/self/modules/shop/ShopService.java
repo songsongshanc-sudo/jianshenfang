@@ -375,13 +375,14 @@ public class ShopService implements CourseGrant {
         requireText(name, "请填写教练姓名");
         requireText(phone, "请填写手机号");
         long id = snowflake.next();
+        String mobile = requireMobile(phone);
         jdbc.update("""
                 INSERT INTO coach (id, store_id, name, phone, intro, avatar_url, photo_url, specialty, rating, lesson_taught, certificate_urls, created_at)
                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
-                """, id, storeId, name.trim(), phone.trim(), RichHtml.clean(intro), blank(avatarUrl), blank(photoUrl),
+                """, id, storeId, name.trim(), mobile, RichHtml.clean(intro), blank(avatarUrl), blank(photoUrl),
                 blank(specialty), rating == null ? 5.0 : rating, lessonTaught == null ? 0 : Math.max(0, lessonTaught),
                 blank(certificateUrls), timeProvider.now());
-        ensureCoachUser(storeId, name.trim(), phone.trim());
+        ensureCoachUser(storeId, name.trim(), mobile);
         return String.valueOf(id);
     }
 
@@ -391,16 +392,16 @@ public class ShopService implements CourseGrant {
         long storeId = coachStoreId(id);
         StoreScope.requireStoreAccess(actor, storeId);
         requireText(name, "请填写教练姓名");
-        requireText(phone, "请填写手机号");
+        String mobile = requireMobile(phone);
         int updated = jdbc.update("""
                 UPDATE coach SET name=?, phone=?, intro=?, avatar_url=?, photo_url=?, specialty=?, rating=?, lesson_taught=?, certificate_urls=?
                 WHERE id=?
-                """, name.trim(), phone.trim(), RichHtml.clean(intro), blank(avatarUrl), blank(photoUrl), blank(specialty),
+                """, name.trim(), mobile, RichHtml.clean(intro), blank(avatarUrl), blank(photoUrl), blank(specialty),
                 rating == null ? 5.0 : rating, lessonTaught == null ? 0 : Math.max(0, lessonTaught), blank(certificateUrls), id);
         if (updated != 1) {
             throw BizException.badRequest("教练不存在");
         }
-        ensureCoachUser(storeId, name.trim(), phone.trim());
+        ensureCoachUser(storeId, name.trim(), mobile);
     }
 
     public void deleteCoach(AdminPrincipal actor, long id) {
@@ -483,17 +484,19 @@ public class ShopService implements CourseGrant {
         for (Map<String, Object> row : rows) {
             String phone = row.get("phone") == null ? "" : String.valueOf(row.get("phone"));
             String name = row.get("name") == null ? "" : String.valueOf(row.get("name"));
-            row.put("wechatBound", ensureCoachUser(storeId, name, phone));
+            String mobile = mobileDigits(phone);
+            if (!mobile.matches("1\\d{10}")) {
+                row.put("wechatBound", false);
+                continue;
+            }
+            row.put("wechatBound", ensureCoachUser(storeId, name, mobile));
         }
         return rows;
     }
 
     /** 确保教练存在可登录的 user 记录，返回是否已绑定微信。 */
     private boolean ensureCoachUser(long storeId, String name, String phone) {
-        String mobile = phone == null ? "" : phone.trim();
-        if (!mobile.matches("1\\d{10}")) {
-            throw BizException.badRequest("请填写 11 位手机号");
-        }
+        String mobile = requireMobile(phone);
         GymUser user = userMapper.selectOne(new LambdaQueryWrapper<GymUser>().eq(GymUser::getPhone, mobile));
         LocalDateTime now = timeProvider.now();
         if (user == null) {
@@ -941,6 +944,23 @@ public class ShopService implements CourseGrant {
             throw BizException.badRequest("视频号编号以 sph 开头，在视频号助手首页复制");
         }
         return finder;
+    }
+
+    private static String requireMobile(String phone) {
+        String mobile = mobileDigits(phone);
+        if (!mobile.matches("1\\d{10}")) {
+            throw BizException.badRequest("请填写 11 位手机号");
+        }
+        return mobile;
+    }
+
+    /** 去掉空格、横线和 +86，只留数字。13 位且以 86 开头时去掉国家码。 */
+    private static String mobileDigits(String phone) {
+        String digits = phone == null ? "" : phone.replaceAll("\\D", "");
+        if (digits.startsWith("86") && digits.length() == 13) {
+            digits = digits.substring(2);
+        }
+        return digits;
     }
 
     private static void requireText(String value, String message) {

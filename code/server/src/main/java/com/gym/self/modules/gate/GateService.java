@@ -234,6 +234,7 @@ public class GateService {
             case OTHER_STORE -> VendorReply.of(3, "非本店会员", content);
             case UNREGISTERED -> VendorReply.of(3, "未注册", Map.of());
             case DISABLED -> VendorReply.of(3, "设备已停用", Map.of());
+            case SUSPENDED -> VendorReply.of(3, "已停用", content);
         };
     }
 
@@ -293,6 +294,10 @@ public class GateService {
         GymUser user = findUser(memberNo, vendorFaceId);
         if (user == null || !"ACTIVE".equals(user.getRegisterStatus())) {
             return new VerifyResult(false, "未注册");
+        }
+        if (!"ACTIVE".equals(user.getStatus())) {
+            log(user.getId(), device, null, "REJECTED", timeProvider.now());
+            return new VerifyResult(false, "已停用");
         }
         UserFace face = userFaceMapper.selectOne(new LambdaQueryWrapper<UserFace>()
                 .eq(UserFace::getUserId, user.getId())
@@ -493,6 +498,10 @@ public class GateService {
         if (user == null || !"ACTIVE".equals(user.getRegisterStatus())) {
             return Outcome.UNREGISTERED;
         }
+        if (!"ACTIVE".equals(user.getStatus())) {
+            log(user.getId(), device, null, "REJECTED", timeProvider.now(), recogTime, 1, memberKey);
+            return Outcome.SUSPENDED;
+        }
         UserFace face = userFaceMapper.selectOne(new LambdaQueryWrapper<UserFace>()
                 .eq(UserFace::getUserId, user.getId())
                 .eq(UserFace::getStatus, "ENROLLED")
@@ -554,7 +563,7 @@ public class GateService {
     }
 
     private enum Outcome {
-        OPEN, EXPIRED, OTHER_STORE, UNREGISTERED, DISABLED
+        OPEN, EXPIRED, OTHER_STORE, UNREGISTERED, DISABLED, SUSPENDED
     }
 
     private GateDevice signed(String sn, String timestamp, String nonce, String signature, String body) {

@@ -20,12 +20,16 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.sql.Timestamp;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Service
 public class AdminMemberService {
@@ -137,7 +141,7 @@ public class AdminMemberService {
         user.setUpdatedAt(now);
         userMapper.insert(user);
         enrollFace(user, photo);
-        grant(storeId, user.getId(), cardIds, packIds);
+        grant(storeId, user.getId(), cardIds, packIds, true);
         adminOpLog.record(actor, storeId, user.getId(), user.getId(), "新增会员",
                 "姓名 " + realName + "，手机号 " + mobile + "，会员编号 " + user.getMemberNo());
         return Map.of("id", String.valueOf(user.getId()));
@@ -196,7 +200,7 @@ public class AdminMemberService {
         if ((cardIds == null || cardIds.isEmpty()) && (packIds == null || packIds.isEmpty())) {
             throw BizException.badRequest("请选择会员卡或课程");
         }
-        grant(storeId, userId, cardIds, packIds);
+        grant(storeId, userId, cardIds, packIds, true);
         int cards = cardIds == null ? 0 : cardIds.size();
         int packs = packIds == null ? 0 : packIds.size();
         Long logStore = actor.storeId() != null ? actor.storeId() : storeId;
@@ -204,12 +208,90 @@ public class AdminMemberService {
                 "会员 " + display(user) + "，会员卡 " + cards + " 张，课程 " + packs + " 个");
     }
 
+    /** 编辑会员一次提交。姓名、手机号、会员卡、课程、微信和停用状态都在确认后写入。 */
+    @Transactional
+    public void saveEdits(AdminPrincipal actor, long userId, String name, String phone, boolean unbindWechat,
+                          Long storeId, List<Long> addCardIds, List<Long> removeCardIds,
+                          List<Long> addPackIds, List<Long> removePackIds, String status) {
+        GymUser user = mustVisible(actor, userId);
+        String originalStatus = user.getStatus() == null ? "ACTIVE" : user.getStatus();
+        boolean changed = false;
+        String nextName = name == null ? blankToEmpty(user.getNickname()) : name.trim();
+        if (!nextName.equals(blankToEmpty(user.getNickname()))) {
+            changeName(actor, userId, nextName);
+            changed = true;
+        }
+        String nextPhone = phone == null ? blankToEmpty(user.getPhone()) : phone.trim();
+        if (!nextPhone.equals(blankToEmpty(user.getPhone()))) {
+            changePhone(actor, userId, nextPhone);
+            changed = true;
+        }
+        if (unbindWechat && user.getOpenid() != null && !user.getOpenid().isBlank()) {
+            unbind(actor, userId);
+            changed = true;
+        }
+        Set<Long> cardStores = new LinkedHashSet<>();
+        if (removeCardIds != null) {
+            for (Long membershipId : removeCardIds) {
+                if (membershipId == null) {
+                    continue;
+                }
+                cardStores.addAll(revokeCard(actor, userId, membershipId));
+                changed = true;
+            }
+        }
+        if (removePackIds != null) {
+            for (Long accountId : removePackIds) {
+                if (accountId == null) {
+                    continue;
+                }
+                removePack(actor, userId, accountId);
+                changed = true;
+            }
+        }
+        boolean addingCards = addCardIds != null && addCardIds.stream().anyMatch(id -> id != null);
+        boolean addingPacks = addPackIds != null && addPackIds.stream().anyMatch(id -> id != null);
+        if (addingCards || addingPacks) {
+            if (storeId == null) {
+                throw BizException.badRequest("请选择门店");
+            }
+            StoreScope.requireStoreAccess(actor, storeId);
+            grant(storeId, userId, addCardIds, addPackIds, false);
+            if (addingCards) {
+                cardStores.add(storeId);
+            }
+            changed = true;
+        }
+        boolean suspending = "DISABLED".equals(status) && !"DISABLED".equals(originalStatus);
+        boolean resuming = "ACTIVE".equals(status) && "DISABLED".equals(originalStatus);
+        if (status != null && !status.isBlank() && !suspending && !resuming && !status.equals(originalStatus)) {
+            throw BizException.badRequest("会员状态不正确");
+        }
+        if (suspending || resuming) {
+            changed = true;
+        }
+        if (!changed) {
+            throw BizException.badRequest("没有修改");
+        }
+        if (suspending) {
+            suspendMember(actor, userId);
+            return;
+        }
+        if (resuming) {
+            resumeMember(actor, userId);
+            return;
+        }
+        for (Long touched : cardStores) {
+            gateFaceSync.syncMembership(userId, touched, "保存会员");
+        }
+    }
+
     public Map<String, Object> memberGrants(AdminPrincipal actor, long userId) {
         mustVisible(actor, userId);
         LocalDateTime now = timeProvider.now();
         Long storeId = actor.master() ? null : actor.storeId();
         String cardSql = """
-                SELECT m.id, c.name, m.end_at, s.name AS store_name
+                SELECT m.id, c.name, m.start_at, m.end_at, s.name AS store_name
                 FROM membership m
                 JOIN card_product c ON c.id = m.card_product_id
                 JOIN store s ON s.id = m.store_id
@@ -235,15 +317,22 @@ public class AdminMemberService {
         }
         cardSql += " ORDER BY m.id";
         packSql += " ORDER BY a.id";
-        List<Map<String, Object>> cards = jdbc.queryForList(cardSql, cardArgs.toArray()).stream().map(row -> {
+        List<Map<String, Object>> cardRows = jdbc.queryForList(cardSql, cardArgs.toArray());
+        LocalDateTime latestEnd = null;
+        List<Map<String, Object>> cards = new ArrayList<>();
+        for (Map<String, Object> row : cardRows) {
+            LocalDateTime endAt = asTime(row.get("end_at"));
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("id", String.valueOf(row.get("id")));
             item.put("name", row.get("name"));
             item.put("storeName", row.get("store_name"));
-            String endAt = row.get("end_at") == null ? "" : String.valueOf(row.get("end_at"));
-            item.put("endAt", endAt.length() >= 10 ? endAt.substring(0, 10) : endAt);
-            return item;
-        }).toList();
+            item.put("days", spanDays(asTime(row.get("start_at")), endAt));
+            cards.add(item);
+            if (endAt != null && (latestEnd == null || endAt.isAfter(latestEnd))) {
+                latestEnd = endAt;
+            }
+        }
+        int remainDays = remainDays(now, latestEnd);
         List<Map<String, Object>> packs = jdbc.queryForList(packSql, packArgs.toArray()).stream().map(row -> {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("id", String.valueOf(row.get("id")));
@@ -252,25 +341,97 @@ public class AdminMemberService {
             item.put("remaining", row.get("remaining"));
             return item;
         }).toList();
-        return Map.of("cards", cards, "packs", packs);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("remainDays", remainDays);
+        body.put("cards", cards);
+        body.put("packs", packs);
+        return body;
     }
 
     @Transactional
     public void removeCard(AdminPrincipal actor, long userId, long membershipId) {
+        for (Long touched : revokeCard(actor, userId, membershipId)) {
+            gateFaceSync.onMembership(userId, touched);
+            gateFaceSync.syncMembership(userId, touched, "删除会员卡");
+        }
+    }
+
+    private Set<Long> revokeCard(AdminPrincipal actor, long userId, long membershipId) {
         GymUser user = mustVisible(actor, userId);
         List<Map<String, Object>> rows = jdbc.queryForList(
-                "SELECT user_id, store_id, status FROM membership WHERE id = ?", membershipId);
+                "SELECT user_id, store_id, card_product_id, status, start_at, end_at FROM membership WHERE id = ?",
+                membershipId);
         if (rows.isEmpty() || ((Number) rows.get(0).get("user_id")).longValue() != userId
                 || "REVOKED".equals(String.valueOf(rows.get(0).get("status")))) {
             throw BizException.badRequest("会员卡不存在");
         }
         long storeId = ((Number) rows.get(0).get("store_id")).longValue();
+        long cardProductId = ((Number) rows.get(0).get("card_product_id")).longValue();
         StoreScope.requireStoreAccess(actor, storeId);
+        LocalDateTime start = asTime(rows.get(0).get("start_at"));
+        LocalDateTime end = asTime(rows.get(0).get("end_at"));
         LocalDateTime now = timeProvider.now();
-        jdbc.update("UPDATE membership SET status = 'REVOKED', end_at = ? WHERE id = ?", now, membershipId);
-        gateFaceSync.onMembership(userId, storeId);
-        gateFaceSync.syncMembership(userId, storeId, "删除会员卡");
-        adminOpLog.record(actor, storeId, userId, membershipId, "删除会员卡", "会员 " + display(user) + " 的会员卡已删除");
+        Set<Long> touchedStores = new LinkedHashSet<>();
+        touchedStores.add(storeId);
+        if (start != null && end != null && end.isAfter(start)) {
+            Duration span = Duration.between(start, end);
+            List<Map<String, Object>> later = jdbc.queryForList("""
+                    SELECT id, store_id, start_at, end_at FROM membership
+                    WHERE user_id = ? AND id <> ? AND status <> 'REVOKED' AND start_at >= ?
+                      AND (store_id = ? OR card_product_id = ?)
+                    """, userId, membershipId, Timestamp.valueOf(end), storeId, cardProductId);
+            for (Map<String, Object> row : later) {
+                LocalDateTime laterStart = asTime(row.get("start_at"));
+                LocalDateTime laterEnd = asTime(row.get("end_at"));
+                if (laterStart == null || laterEnd == null) {
+                    continue;
+                }
+                jdbc.update("UPDATE membership SET start_at = ?, end_at = ? WHERE id = ?",
+                        Timestamp.valueOf(laterStart.minus(span)), Timestamp.valueOf(laterEnd.minus(span)),
+                        ((Number) row.get("id")).longValue());
+                touchedStores.add(((Number) row.get("store_id")).longValue());
+            }
+        }
+        jdbc.update("UPDATE membership SET status = 'REVOKED', end_at = ? WHERE id = ?", Timestamp.valueOf(now), membershipId);
+        adminOpLog.record(actor, storeId, userId, membershipId, "删除会员卡",
+                "会员 " + display(user) + " 的会员卡已删除，有效期已减去这张卡的天数");
+        return touchedStores;
+    }
+
+    private static int remainDays(LocalDateTime now, LocalDateTime end) {
+        if (end == null || !end.isAfter(now)) {
+            return 0;
+        }
+        long seconds = Duration.between(now, end).getSeconds();
+        if (seconds <= 0) {
+            return 0;
+        }
+        return (int) Math.min(Integer.MAX_VALUE, (seconds + 86_399L) / 86_400L);
+    }
+
+    private static int spanDays(LocalDateTime start, LocalDateTime end) {
+        if (start == null || end == null || !end.isAfter(start)) {
+            return 0;
+        }
+        long seconds = Duration.between(start, end).getSeconds();
+        if (seconds <= 0) {
+            return 0;
+        }
+        return (int) Math.min(Integer.MAX_VALUE, (seconds + 86_399L) / 86_400L);
+    }
+
+    private static String blankToEmpty(String value) {
+        return value == null ? "" : value.trim();
+    }
+
+    private static LocalDateTime asTime(Object value) {
+        if (value instanceof LocalDateTime time) {
+            return time;
+        }
+        if (value instanceof Timestamp stamp) {
+            return stamp.toLocalDateTime();
+        }
+        return null;
     }
 
     @Transactional
@@ -330,7 +491,7 @@ public class AdminMemberService {
     private List<com.gym.self.modules.gate.GateDevice> gatesHolding(GymUser user) {
         long createdStoreId = user.getCreatedStoreId() == null ? 0L : user.getCreatedStoreId();
         return jdbc.query("""
-                SELECT DISTINCT d.id, d.device_sn, d.name
+                SELECT DISTINCT d.id, d.device_sn, d.name, d.store_id
                 FROM gate_device d
                 WHERE d.status = 'ENABLED' AND (
                   EXISTS (
@@ -345,6 +506,7 @@ public class AdminMemberService {
             device.setId(rs.getLong("id"));
             device.setDeviceSn(rs.getString("device_sn"));
             device.setName(rs.getString("name"));
+            device.setStoreId(rs.getLong("store_id"));
             device.setStatus("ENABLED");
             return device;
         }, user.getId(), user.getId(), user.getId(), createdStoreId);
@@ -378,7 +540,7 @@ public class AdminMemberService {
         appConfigMapper.updateById(config);
     }
 
-    private void grant(long storeId, long userId, List<Long> cardIds, List<Long> packIds) {
+    private void grant(long storeId, long userId, List<Long> cardIds, List<Long> packIds, boolean syncGate) {
         if (cardIds != null) {
             for (Long cardId : cardIds) {
                 if (cardId != null) {
@@ -402,7 +564,7 @@ public class AdminMemberService {
             }
         }
         boolean grantedCard = cardIds != null && cardIds.stream().anyMatch(id -> id != null);
-        if (grantedCard) {
+        if (grantedCard && syncGate) {
             gateFaceSync.syncMembership(userId, storeId, "保存会员卡");
         }
     }

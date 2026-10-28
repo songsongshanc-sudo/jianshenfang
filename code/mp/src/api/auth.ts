@@ -5,7 +5,7 @@ const baseURL =
   "";
   // #endif
   // #ifndef H5
-  "http://127.0.0.1:8080";
+  "http://59.110.11.215";
   // #endif
   // 与 http.ts 同一规则。见 开发文档/前端测试逻辑-待删除.md
 

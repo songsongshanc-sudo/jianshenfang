@@ -66,6 +66,15 @@ public class AdminMemberController {
         return ApiResponse.ok(null);
     }
 
+    @PostMapping("/api/admin/members/{id}/edits")
+    public ApiResponse<Void> saveEdits(@PathVariable String id, @Valid @RequestBody EditMember request) {
+        adminMemberService.saveEdits(CurrentAdmin.get(), parse(id), request.name(), request.phone(),
+                Boolean.TRUE.equals(request.unbindWechat()), parseOptional(request.storeId()),
+                parseIds(request.addCardIds()), parseIds(request.removeCardIds()),
+                parseIds(request.addPackIds()), parseIds(request.removePackIds()), request.status());
+        return ApiResponse.ok(null);
+    }
+
     @PostMapping("/api/admin/members/{id}/grants")
     public ApiResponse<Void> grants(@PathVariable String id, @Valid @RequestBody GrantRequest request) {
         adminMemberService.grantMore(CurrentAdmin.get(), parse(id), parse(request.storeId()),
@@ -148,6 +157,11 @@ public class AdminMemberController {
     }
 
     public record GrantRequest(@NotBlank String storeId, List<String> cardIds, List<String> packIds) {
+    }
+
+    public record EditMember(String name, String phone, Boolean unbindWechat, String storeId,
+                             List<String> addCardIds, List<String> removeCardIds,
+                             List<String> addPackIds, List<String> removePackIds, String status) {
     }
 
     public record PhoneRequest(@NotBlank String phone) {

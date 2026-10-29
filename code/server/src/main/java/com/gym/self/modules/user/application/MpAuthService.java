@@ -7,6 +7,7 @@ import com.gym.self.common.id.Snowflake;
 import com.gym.self.common.time.TimeProvider;
 import com.gym.self.modules.card.application.CardService;
 import com.gym.self.modules.gate.GateFaceSync;
+import com.gym.self.modules.gate.StaffAccess;
 import com.gym.self.modules.user.auth.CurrentMp;
 import com.gym.self.modules.user.auth.MpJwt;
 import com.gym.self.modules.user.auth.MpPrincipal;
@@ -39,12 +40,14 @@ public class MpAuthService {
     private final TimeProvider timeProvider;
     private final CardService cardService;
     private final GateFaceSync gateFaceSync;
+    private final StaffAccess staffAccess;
     private final SmsCodeService smsCodeService;
 
     public MpAuthService(WxAuthPort wxAuthPort, FaceVendorPort faceVendorPort, GymUserMapper userMapper,
                          UserFaceMapper userFaceMapper, MemberNoService memberNoService, FaceFileService faceFileService,
                          MpJwt mpJwt, MpTokenStore tokenStore, Snowflake snowflake, TimeProvider timeProvider,
-                         CardService cardService, GateFaceSync gateFaceSync, SmsCodeService smsCodeService) {
+                         CardService cardService, GateFaceSync gateFaceSync, StaffAccess staffAccess,
+                         SmsCodeService smsCodeService) {
         this.wxAuthPort = wxAuthPort;
         this.faceVendorPort = faceVendorPort;
         this.userMapper = userMapper;
@@ -57,6 +60,7 @@ public class MpAuthService {
         this.timeProvider = timeProvider;
         this.cardService = cardService;
         this.gateFaceSync = gateFaceSync;
+        this.staffAccess = staffAccess;
         this.smsCodeService = smsCodeService;
     }
 
@@ -222,6 +226,9 @@ public class MpAuthService {
         face.setStatus("ENROLLED");
         face.setVendorFaceId(result.vendorFaceId());
         userFaceMapper.insert(face);
+        for (Long storeId : staffAccess.storeIds(user.getId())) {
+            gateFaceSync.syncPerson(user.getId(), storeId, "录入人脸");
+        }
         MpJwt.Issued issued = mpJwt.face(user.getId());
         tokenStore.save(user.getId(), issued.jti(), issued.ttlSeconds());
         return new LoginView("REGISTER", issued.token(), null, user.getRegisterStatus(), user.getMemberNo());

@@ -35,6 +35,7 @@ function statusText(status: string) {
   if (status === "PAID") return "已支付";
   if (status === "CLOSED") return "已关闭";
   if (status === "REFUNDED") return "已退款";
+  if (status === "VOID") return "已作废";
   return "待支付";
 }
 

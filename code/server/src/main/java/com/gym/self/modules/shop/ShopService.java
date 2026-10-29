@@ -8,6 +8,7 @@ import com.gym.self.modules.adminuser.auth.AdminPrincipal;
 import com.gym.self.modules.adminuser.auth.StoreScope;
 import com.gym.self.modules.card.domain.Membership;
 import com.gym.self.modules.card.domain.MembershipMapper;
+import com.gym.self.modules.gate.GateFaceSync;
 import com.gym.self.modules.order.application.CourseGrant;
 import com.gym.self.modules.order.application.OrderService;
 import com.gym.self.modules.order.domain.TradeOrder;
@@ -22,8 +23,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HexFormat;
@@ -45,12 +48,14 @@ public class ShopService implements CourseGrant {
     private final MembershipMapper membershipMapper;
     private final AdminMemberService adminMemberService;
     private final MemberNoService memberNoService;
+    private final GateFaceSync gateFaceSync;
+    private static final DateTimeFormatter GATE_UNTIL = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private final Map<Long, ArrayDeque<Instant>> grouponHits = new ConcurrentHashMap<>();
     private final Map<String, LessonToken> lessonTokens = new ConcurrentHashMap<>();
 
     public ShopService(JdbcTemplate jdbc, Snowflake snowflake, TimeProvider timeProvider, ContentSafety contentSafety,
                        OrderService orderService, GymUserMapper userMapper, MembershipMapper membershipMapper,
-                       AdminMemberService adminMemberService, MemberNoService memberNoService) {
+                       AdminMemberService adminMemberService, MemberNoService memberNoService, GateFaceSync gateFaceSync) {
         this.jdbc = jdbc;
         this.snowflake = snowflake;
         this.timeProvider = timeProvider;
@@ -60,6 +65,7 @@ public class ShopService implements CourseGrant {
         this.membershipMapper = membershipMapper;
         this.adminMemberService = adminMemberService;
         this.memberNoService = memberNoService;
+        this.gateFaceSync = gateFaceSync;
     }
 
     public String repair(long userId, long storeId, String equipmentCode, String content, String imageUrl) {
@@ -368,42 +374,55 @@ public class ShopService implements CourseGrant {
         return String.valueOf(orderId);
     }
 
+    @Transactional
     public String saveCoach(AdminPrincipal actor, long storeId, String name, String phone, String intro,
                             String avatarUrl, String photoUrl, String specialty, Double rating, Integer lessonTaught,
-                            String certificateUrls) {
+                            String certificateUrls, String gateUntil) {
         StoreScope.requireStoreAccess(actor, storeId);
         requireText(name, "请填写教练姓名");
         requireText(phone, "请填写手机号");
         long id = snowflake.next();
         String mobile = requireMobile(phone);
+        LocalDateTime until = parseGateUntil(gateUntil);
         jdbc.update("""
-                INSERT INTO coach (id, store_id, name, phone, intro, avatar_url, photo_url, specialty, rating, lesson_taught, certificate_urls, created_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                INSERT INTO coach (id, store_id, name, phone, intro, avatar_url, photo_url, specialty, rating, lesson_taught, certificate_urls, gate_until, created_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """, id, storeId, name.trim(), mobile, RichHtml.clean(intro), blank(avatarUrl), blank(photoUrl),
                 blank(specialty), rating == null ? 5.0 : rating, lessonTaught == null ? 0 : Math.max(0, lessonTaught),
-                blank(certificateUrls), timeProvider.now());
+                blank(certificateUrls), until == null ? null : Timestamp.valueOf(until), timeProvider.now());
         ensureCoachUser(storeId, name.trim(), mobile);
+        syncCoachGate(storeId, mobile);
         return String.valueOf(id);
     }
 
+    @Transactional
     public void updateCoach(AdminPrincipal actor, long id, String name, String phone, String intro,
                             String avatarUrl, String photoUrl, String specialty, Double rating, Integer lessonTaught,
-                            String certificateUrls) {
+                            String certificateUrls, String gateUntil) {
         long storeId = coachStoreId(id);
         StoreScope.requireStoreAccess(actor, storeId);
         requireText(name, "请填写教练姓名");
         String mobile = requireMobile(phone);
+        List<Map<String, Object>> before = jdbc.queryForList("SELECT phone FROM coach WHERE id = ?", id);
+        String previousPhone = before.isEmpty() || before.get(0).get("phone") == null ? "" : String.valueOf(before.get(0).get("phone"));
+        LocalDateTime until = parseGateUntil(gateUntil);
         int updated = jdbc.update("""
-                UPDATE coach SET name=?, phone=?, intro=?, avatar_url=?, photo_url=?, specialty=?, rating=?, lesson_taught=?, certificate_urls=?
+                UPDATE coach SET name=?, phone=?, intro=?, avatar_url=?, photo_url=?, specialty=?, rating=?, lesson_taught=?, certificate_urls=?, gate_until=?
                 WHERE id=?
                 """, name.trim(), mobile, RichHtml.clean(intro), blank(avatarUrl), blank(photoUrl), blank(specialty),
-                rating == null ? 5.0 : rating, lessonTaught == null ? 0 : Math.max(0, lessonTaught), blank(certificateUrls), id);
+                rating == null ? 5.0 : rating, lessonTaught == null ? 0 : Math.max(0, lessonTaught), blank(certificateUrls),
+                until == null ? null : Timestamp.valueOf(until), id);
         if (updated != 1) {
             throw BizException.badRequest("教练不存在");
         }
         ensureCoachUser(storeId, name.trim(), mobile);
+        syncCoachGate(storeId, mobile);
+        if (!previousPhone.isBlank() && !previousPhone.equals(mobile)) {
+            syncCoachGate(storeId, previousPhone);
+        }
     }
 
+    @Transactional
     public void deleteCoach(AdminPrincipal actor, long id) {
         long storeId = coachStoreId(id);
         StoreScope.requireStoreAccess(actor, storeId);
@@ -415,10 +434,15 @@ public class ShopService implements CourseGrant {
         if (lessons != null && lessons > 0) {
             throw BizException.badRequest("已有学员课时，不能删除");
         }
+        List<Map<String, Object>> coachRows = jdbc.queryForList("SELECT phone FROM coach WHERE id = ?", id);
+        String coachPhone = coachRows.isEmpty() || coachRows.get(0).get("phone") == null ? "" : String.valueOf(coachRows.get(0).get("phone"));
         jdbc.update("DELETE FROM course_pack WHERE coach_id = ?", id);
         int updated = jdbc.update("DELETE FROM coach WHERE id = ?", id);
         if (updated != 1) {
             throw BizException.badRequest("教练不存在");
+        }
+        if (!coachPhone.isBlank()) {
+            syncCoachGate(storeId, coachPhone);
         }
     }
 
@@ -536,14 +560,55 @@ public class ShopService implements CourseGrant {
     }
 
     public List<Map<String, Object>> coaches(long storeId) {
-        return jdbc.queryForList("""
+        List<Map<String, Object>> rows = jdbc.queryForList("""
                 SELECT c.id, s.name AS store_name, s.cover_url AS store_cover_url, c.name, c.phone, c.intro,
-                       c.avatar_url, c.photo_url, c.specialty, c.rating, c.lesson_taught, c.certificate_urls,
+                       c.avatar_url, c.photo_url, c.specialty, c.rating, c.lesson_taught, c.certificate_urls, c.gate_until,
                        (SELECT MIN(p.price_fen) FROM course_pack p WHERE p.coach_id = c.id AND p.status = 'ON') AS min_price_fen,
                        (SELECT COUNT(*) FROM course_pack p WHERE p.coach_id = c.id AND p.status = 'ON') AS pack_count
                 FROM coach c JOIN store s ON s.id = c.store_id
                 WHERE c.store_id = ? ORDER BY c.id
                 """, storeId);
+        for (Map<String, Object> row : rows) {
+            row.put("gateUntil", formatGateUntil(row.remove("gate_until")));
+        }
+        return rows;
+    }
+
+    private void syncCoachGate(long storeId, String phone) {
+        GymUser user = userMapper.selectOne(new LambdaQueryWrapper<GymUser>().eq(GymUser::getPhone, phone));
+        if (user != null) {
+            gateFaceSync.syncPerson(user.getId(), storeId, "设置教练闸机");
+        }
+    }
+
+    private LocalDateTime parseGateUntil(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String text = raw.trim().replace('T', ' ');
+        if (text.length() == 16) {
+            text = text + ":00";
+        }
+        LocalDateTime until;
+        try {
+            until = LocalDateTime.parse(text, GATE_UNTIL);
+        } catch (RuntimeException ex) {
+            throw BizException.badRequest("闸机到期时间不正确");
+        }
+        if (!until.isAfter(timeProvider.now())) {
+            throw BizException.badRequest("闸机到期时间要晚于现在");
+        }
+        return until;
+    }
+
+    private static String formatGateUntil(Object value) {
+        if (value instanceof LocalDateTime time) {
+            return time.format(GATE_UNTIL);
+        }
+        if (value instanceof Timestamp stamp) {
+            return stamp.toLocalDateTime().format(GATE_UNTIL);
+        }
+        return "";
     }
 
     public Map<String, Object> coachDetail(long coachId, Long userId) {

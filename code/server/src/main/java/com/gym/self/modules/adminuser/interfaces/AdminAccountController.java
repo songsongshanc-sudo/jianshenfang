@@ -49,6 +49,12 @@ public class AdminAccountController {
         return ApiResponse.ok(adminAuthService.list(CurrentAdmin.get()));
     }
 
+    @PostMapping("/auth/password")
+    public ApiResponse<PasswordChanged> ownPassword(@Valid @RequestBody PasswordRequest request) {
+        boolean self = adminAuthService.changePassword(CurrentAdmin.get(), CurrentAdmin.get().id(), request.password());
+        return ApiResponse.ok(new PasswordChanged(self));
+    }
+
     @PostMapping("/accounts/{id}/password")
     public ApiResponse<PasswordChanged> password(@PathVariable String id, @Valid @RequestBody PasswordRequest request) {
         boolean self = adminAuthService.changePassword(CurrentAdmin.get(), Long.parseLong(id), request.password());

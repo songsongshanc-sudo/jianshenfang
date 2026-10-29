@@ -23,6 +23,9 @@
           </el-table-column>
           <el-table-column prop="name" label="姓名" width="120" />
           <el-table-column prop="phone" label="手机号" width="140" />
+          <el-table-column label="闸机到期" min-width="170">
+            <template #default="{ row }">{{ row.gateUntil || "未设置" }}</template>
+          </el-table-column>
           <el-table-column label="微信" min-width="100">
             <template #default="{ row }">
               <span>{{ row.wechatBound ? "已绑定" : "未绑定" }}</span>
@@ -108,6 +111,10 @@
       <el-form label-width="96px">
         <el-form-item label="姓名"><el-input v-model="coachForm.name" /></el-form-item>
         <el-form-item label="手机号"><el-input v-model="coachForm.phone" placeholder="11 位手机号，教练用手机号登录" /></el-form-item>
+        <el-form-item label="闸机到期">
+          <el-date-picker v-model="coachForm.gateUntil" type="datetime" value-format="YYYY-MM-DD HH:mm:ss" placeholder="不填则不能刷脸进门" />
+          <span class="hint">教练已有人脸时，保存会下发到本店闸机。闸机不在线则保存失败。</span>
+        </el-form-item>
         <el-form-item label="擅长"><el-input v-model="coachForm.specialty" placeholder="如：增肌塑形减脂" /></el-form-item>
         <el-form-item label="评分"><el-input-number v-model="coachForm.rating" :min="0" :max="5" :step="0.1" /></el-form-item>
         <el-form-item label="累计课时"><el-input-number v-model="coachForm.lessonTaught" :min="0" :step="1" /></el-form-item>
@@ -197,6 +204,7 @@ interface CoachRow {
   avatar_url?: string;
   photo_url?: string;
   specialty?: string;
+  gateUntil?: string;
   rating?: number;
   lesson_taught?: number;
   certificate_urls?: string;
@@ -220,6 +228,7 @@ const coachForm = reactive({
   id: "",
   name: "",
   phone: "",
+  gateUntil: "",
   intro: "",
   avatarUrl: "",
   photoUrl: "",
@@ -286,6 +295,7 @@ function openCoach(row?: CoachRow) {
   coachForm.id = row?.id || "";
   coachForm.name = row?.name || "";
   coachForm.phone = row?.phone || "";
+  coachForm.gateUntil = row?.gateUntil || "";
   coachForm.intro = row?.intro || "";
   coachForm.avatarUrl = row?.avatar_url || "";
   coachForm.photoUrl = row?.photo_url || "";
@@ -301,6 +311,7 @@ async function saveCoach() {
     storeId: storeId.value,
     name: coachForm.name,
     phone: coachForm.phone,
+    gateUntil: coachForm.gateUntil || "",
     intro: coachForm.intro,
     avatarUrl: coachForm.avatarUrl,
     photoUrl: coachForm.photoUrl || coachForm.avatarUrl,

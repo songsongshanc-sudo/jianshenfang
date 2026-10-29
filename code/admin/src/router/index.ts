@@ -5,6 +5,7 @@ import DashboardView from "../views/DashboardView.vue";
 import StoresView from "../views/StoresView.vue";
 import MyStoreView from "../views/MyStoreView.vue";
 import AccountsView from "../views/AccountsView.vue";
+import EntryAdminsView from "../views/EntryAdminsView.vue";
 import BannersView from "../views/BannersView.vue";
 import NoticesView from "../views/NoticesView.vue";
 import AgreementsView from "../views/AgreementsView.vue";
@@ -34,6 +35,7 @@ export const router = createRouter({
         { path: "stores", component: StoresView },
         { path: "my-store", component: MyStoreView },
         { path: "accounts", component: AccountsView },
+        { path: "entry-admins", component: EntryAdminsView },
         { path: "banners", component: BannersView },
         { path: "notices", component: NoticesView },
         { path: "agreements", component: AgreementsView },
@@ -66,7 +68,7 @@ router.beforeEach((to) => {
   if (to.path === "/login" && session.token) {
     return "/";
   }
-  const masterOnly = ["/stores", "/accounts", "/banners", "/notices", "/agreements", "/service-guides", "/configs", "/franchise"];
+  const masterOnly = ["/stores", "/accounts", "/entry-admins", "/banners", "/notices", "/agreements", "/service-guides", "/configs", "/franchise"];
   if (session.role === "STORE" && masterOnly.includes(to.path)) {
     return "/";
   }

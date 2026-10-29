@@ -50,12 +50,13 @@ public class GateService {
     private final ObjectProvider<VisitService> visitService;
     private final Snowflake snowflake;
     private final TimeProvider timeProvider;
+    private final StaffAccess staffAccess;
 
     public GateService(GateDeviceMapper gateDeviceMapper, DoorLogMapper doorLogMapper, GymUserMapper userMapper,
                        UserFaceMapper userFaceMapper, MembershipMapper membershipMapper, StoreMapper storeMapper,
                        AppConfigMapper appConfigMapper, GateState gateState, GateSyncTaskMapper taskMapper,
                        GateFaceSync gateFaceSync, ObjectProvider<VisitService> visitService, Snowflake snowflake,
-                       TimeProvider timeProvider) {
+                       TimeProvider timeProvider, StaffAccess staffAccess) {
         this.gateDeviceMapper = gateDeviceMapper;
         this.doorLogMapper = doorLogMapper;
         this.userMapper = userMapper;
@@ -69,6 +70,7 @@ public class GateService {
         this.visitService = visitService;
         this.snowflake = snowflake;
         this.timeProvider = timeProvider;
+        this.staffAccess = staffAccess;
     }
 
     public String createDevice(AdminPrincipal actor, long storeId, String name, String deviceSn, String direction) {
@@ -251,9 +253,11 @@ public class GateService {
         if (passStatus == 0 && gateState.withinDebounce(user.getId(), device.getDeviceSn(), Duration.ofSeconds(debounceSeconds()))) {
             return;
         }
-        Membership pass = passStatus == 0 ? activePass(user.getId(), device.getStoreId(), timeProvider.now()) : null;
-        log(user.getId(), device, pass == null ? null : pass.getId(), passStatus == 0 && pass != null ? "SUCCESS" : "REJECTED",
-                timeProvider.now(), recogTime, passStatus, user.getMemberNo());
+        LocalDateTime now = timeProvider.now();
+        Membership pass = passStatus == 0 ? activePass(user.getId(), device.getStoreId(), now) : null;
+        boolean staff = pass == null && passStatus == 0 && staffAccess.open(user.getId(), device.getStoreId(), now);
+        log(user.getId(), device, pass == null ? null : pass.getId(), passStatus == 0 && (pass != null || staff) ? "SUCCESS" : "REJECTED",
+                now, recogTime, passStatus, user.getMemberNo());
     }
 
     public void vendorStranger(String sn, String userId, String realUserId, LocalDateTime recogTime, int passStatus) {
@@ -322,6 +326,13 @@ public class GateService {
             }
             log(user.getId(), device, null, "SUCCESS", now);
             visits.onGateSuccess(user.getId(), device.getStoreId(), direction);
+            return new VerifyResult(true, "开门");
+        }
+        if (pass == null && staffAccess.open(user.getId(), device.getStoreId(), now)) {
+            if (gateState.withinDebounce(user.getId(), device.getDeviceSn(), Duration.ofSeconds(debounceSeconds()))) {
+                return new VerifyResult(true, "开门");
+            }
+            log(user.getId(), device, null, "SUCCESS", now);
             return new VerifyResult(true, "开门");
         }
         if (pass == null) {
@@ -524,6 +535,13 @@ public class GateService {
             }
             log(user.getId(), device, null, "SUCCESS", now, recogTime, 0, user.getMemberNo());
             visits.onGateSuccess(user.getId(), device.getStoreId(), direction);
+            return Outcome.OPEN;
+        }
+        if (pass == null && staffAccess.open(user.getId(), device.getStoreId(), now)) {
+            if (gateState.withinDebounce(user.getId(), device.getDeviceSn(), Duration.ofSeconds(debounceSeconds()))) {
+                return Outcome.OPEN;
+            }
+            log(user.getId(), device, null, "SUCCESS", now, recogTime, 0, user.getMemberNo());
             return Outcome.OPEN;
         }
         if (pass == null) {

@@ -74,6 +74,8 @@ public class AdminMemberService {
                 LEFT JOIN store s ON s.id = u.created_store_id
                 WHERE ((u.member_no IS NOT NULL AND u.member_no <> '')
                     OR (u.phone IS NOT NULL AND u.phone <> ''))
+                  AND NOT EXISTS (SELECT 1 FROM coach c WHERE c.phone = u.phone)
+                  AND NOT EXISTS (SELECT 1 FROM door_staff d WHERE d.user_id = u.id)
                 """);
         List<Object> args = new ArrayList<>();
         if (scoped != null) {
@@ -359,7 +361,7 @@ public class AdminMemberService {
     private Set<Long> revokeCard(AdminPrincipal actor, long userId, long membershipId) {
         GymUser user = mustVisible(actor, userId);
         List<Map<String, Object>> rows = jdbc.queryForList(
-                "SELECT user_id, store_id, card_product_id, status, start_at, end_at FROM membership WHERE id = ?",
+                "SELECT user_id, store_id, card_product_id, order_id, status, start_at, end_at FROM membership WHERE id = ?",
                 membershipId);
         if (rows.isEmpty() || ((Number) rows.get(0).get("user_id")).longValue() != userId
                 || "REVOKED".equals(String.valueOf(rows.get(0).get("status")))) {
@@ -393,6 +395,11 @@ public class AdminMemberService {
             }
         }
         jdbc.update("UPDATE membership SET status = 'REVOKED', end_at = ? WHERE id = ?", Timestamp.valueOf(now), membershipId);
+        Object orderId = rows.get(0).get("order_id");
+        if (orderId != null) {
+            jdbc.update("UPDATE trade_order SET status = 'VOID', updated_at = ? WHERE id = ? AND status = 'PAID'",
+                    Timestamp.valueOf(now), ((Number) orderId).longValue());
+        }
         adminOpLog.record(actor, storeId, userId, membershipId, "删除会员卡",
                 "会员 " + display(user) + " 的会员卡已删除，有效期已减去这张卡的天数");
         return touchedStores;
@@ -456,6 +463,10 @@ public class AdminMemberService {
         jdbc.update("UPDATE lesson_account SET remaining = 0, updated_at = ? WHERE id = ?", now, accountId);
         jdbc.update("INSERT INTO lesson_ledger (id, user_id, pack_id, delta, reason, created_at) VALUES (?,?,?,?,?,?)",
                 snowflake.next(), userId, packId, -remaining, "ADMIN_REMOVE", now);
+        jdbc.update("""
+                UPDATE trade_order SET status = 'VOID', updated_at = ?
+                WHERE user_id = ? AND product_id = ? AND biz_type = 'COURSE' AND status = 'PAID'
+                """, Timestamp.valueOf(now), userId, packId);
         adminOpLog.record(actor, storeId, userId, accountId, "删除课程",
                 "会员 " + display(user) + " 的课程「" + rows.get(0).get("name") + "」已删除，清掉 " + remaining + " 节");
     }

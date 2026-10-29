@@ -292,7 +292,7 @@ public class ShopController {
     public ApiResponse<Void> updateCoach(@PathVariable String id, @Valid @RequestBody CoachUpdate request) {
         shopService.updateCoach(CurrentAdmin.get(), parse(id), request.name(), request.phone(), request.intro(),
                 request.avatarUrl(), request.photoUrl(), request.specialty(), request.rating(), request.lessonTaught(),
-                request.certificateUrls());
+                request.certificateUrls(), request.gateUntil());
         return ApiResponse.ok(null);
     }
 
@@ -306,7 +306,7 @@ public class ShopController {
     public ApiResponse<IdView> coach(@Valid @RequestBody CoachRequest request) {
         return ApiResponse.ok(new IdView(shopService.saveCoach(CurrentAdmin.get(), parse(request.storeId()), request.name(),
                 request.phone(), request.intro(), request.avatarUrl(), request.photoUrl(), request.specialty(),
-                request.rating(), request.lessonTaught(), request.certificateUrls())));
+                request.rating(), request.lessonTaught(), request.certificateUrls(), request.gateUntil())));
     }
 
     @GetMapping("/api/admin/packs")
@@ -484,12 +484,12 @@ public class ShopController {
     }
 
     public record CoachUpdate(@NotBlank String name, @NotBlank String phone, String intro, String avatarUrl, String photoUrl,
-                              String specialty, Double rating, Integer lessonTaught, String certificateUrls) {
+                              String specialty, Double rating, Integer lessonTaught, String certificateUrls, String gateUntil) {
     }
 
     public record CoachRequest(@NotBlank String storeId, @NotBlank String name, @NotBlank String phone, String intro,
                                String avatarUrl, String photoUrl, String specialty, Double rating, Integer lessonTaught,
-                               String certificateUrls) {
+                               String certificateUrls, String gateUntil) {
     }
 
     public record PackSave(@NotBlank String coachId, @NotBlank String name, long priceFen, Long earlyRenewFen, int lessonCount, String content,

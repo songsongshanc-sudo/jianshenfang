@@ -48,7 +48,13 @@
           <div class="headline">{{ title }}</div>
         </div>
         <div class="account">
-          <span class="role">{{ session.role === "MASTER" ? "总账号" : "门店账号" }}</span>
+          <span
+            class="role"
+            @mousedown="pressStart"
+            @mouseup="pressEnd"
+            @mouseleave="pressEnd"
+          >{{ session.role === "MASTER" ? "总账号" : "门店账号" }}</span>
+          <el-button v-if="session.role === 'MASTER'" round @click="router.push('/entry-admins')">账号管理</el-button>
           <el-button round @click="logout">退出</el-button>
         </div>
       </el-header>
@@ -64,6 +70,8 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { ElMessage, ElMessageBox } from "element-plus";
+import { http } from "../api/http";
 import { useSessionStore } from "../stores/session";
 
 const route = useRoute();
@@ -75,6 +83,7 @@ const titles: Record<string, string> = {
   "/stores": "全部门店",
   "/my-store": "本店档案",
   "/accounts": "账号管理",
+  "/entry-admins": "账号管理",
   "/banners": "Banner",
   "/notices": "公告",
   "/agreements": "会员协议",
@@ -101,6 +110,49 @@ const title = computed(() => titles[route.path] || "管理端");
 function logout() {
   session.clear();
   router.push("/login");
+}
+
+let holdTimer: number | null = null;
+
+function pressStart() {
+  if (session.role !== "MASTER") {
+    return;
+  }
+  pressEnd();
+  holdTimer = window.setTimeout(() => {
+    holdTimer = null;
+    askWipe();
+  }, 800);
+}
+
+function pressEnd() {
+  if (holdTimer != null) {
+    window.clearTimeout(holdTimer);
+    holdTimer = null;
+  }
+}
+
+async function askWipe() {
+  try {
+    await ElMessageBox.confirm(
+      "会删除会员、订单、门店、教练、课程、图片，以及闸机里已下发的人员。总账号密码保留。此操作不能恢复。",
+      "删除所有数据？",
+      { type: "warning", confirmButtonText: "确认删除", cancelButtonText: "取消" }
+    );
+  } catch {
+    return;
+  }
+  try {
+    await http.post("/api/admin/system/wipe");
+  } catch {
+    return;
+  }
+  ElMessage.success("已清空");
+  if (route.path !== "/") {
+    router.push("/");
+  } else {
+    router.go(0);
+  }
 }
 </script>
 

@@ -54,12 +54,14 @@ public class GateFaceSync {
     private final TimeProvider timeProvider;
     private final Executor gateExecutor;
     private final ObjectProvider<VisitService> visitService;
+    private final StaffAccess staffAccess;
     private final ConcurrentHashMap<String, ReentrantLock> locks = new ConcurrentHashMap<>();
 
     public GateFaceSync(GateDeviceMapper gateDeviceMapper, GateSyncTaskMapper taskMapper, MembershipMapper membershipMapper,
                         GymUserMapper userMapper, UserFaceMapper userFaceMapper, FaceFileService faceFileService,
                         WsGateCommandPort port, Snowflake snowflake, TimeProvider timeProvider,
-                        @Qualifier("gateExecutor") Executor gateExecutor, ObjectProvider<VisitService> visitService) {
+                        @Qualifier("gateExecutor") Executor gateExecutor, ObjectProvider<VisitService> visitService,
+                        StaffAccess staffAccess) {
         this.gateDeviceMapper = gateDeviceMapper;
         this.taskMapper = taskMapper;
         this.membershipMapper = membershipMapper;
@@ -71,6 +73,7 @@ public class GateFaceSync {
         this.timeProvider = timeProvider;
         this.gateExecutor = gateExecutor;
         this.visitService = visitService;
+        this.staffAccess = staffAccess;
     }
 
     @Transactional
@@ -97,6 +100,7 @@ public class GateFaceSync {
                 .eq(Membership::getUserId, userId)
                 .ne(Membership::getStatus, "REVOKED"));
         Set<Long> stores = rows.stream().map(Membership::getStoreId).collect(Collectors.toSet());
+        stores.addAll(staffAccess.storeIds(userId));
         for (Long storeId : stores) {
             for (GateDevice device : enabled(storeId)) {
                 enqueue(userId, device.getId());
@@ -115,6 +119,7 @@ public class GateFaceSync {
                 .eq(Membership::getStoreId, device.getStoreId())
                 .ne(Membership::getStatus, "REVOKED"));
         rows.stream().map(Membership::getUserId).distinct().forEach(userId -> enqueue(userId, device.getId()));
+        staffAccess.userIds(device.getStoreId(), timeProvider.now()).forEach(userId -> enqueue(userId, device.getId()));
         afterCommit(() -> gateExecutor.execute(() -> flushDevice(device.getDeviceSn())));
     }
 
@@ -339,16 +344,60 @@ public class GateFaceSync {
                 .max(LocalDateTime::compareTo).orElse(null);
         VisitService visits = visitService.getIfAvailable();
         LocalDateTime visitEnd = visits == null ? null : visits.accessUntil(userId, storeId);
-        if (membershipEnd == null && visitEnd == null) {
-            return timeProvider.now().minusMinutes(1);
+        LocalDateTime staffEnd = staffAccess.until(userId, storeId);
+        LocalDateTime end = membershipEnd;
+        if (visitEnd != null && (end == null || visitEnd.isAfter(end))) {
+            end = visitEnd;
         }
-        if (membershipEnd == null) {
-            return visitEnd;
+        if (staffEnd != null && (end == null || staffEnd.isAfter(end))) {
+            end = staffEnd;
         }
-        if (visitEnd == null) {
-            return membershipEnd;
+        return end == null ? timeProvider.now().minusMinutes(1) : end;
+    }
+
+    /** 有人脸且未过期就下发；过期或已取消资格就从这店的闸机删掉。没有人脸则什么都不做。 */
+    public void syncPerson(long userId, long storeId, String action) {
+        if (enrolled(userId) == null) {
+            return;
         }
-        return membershipEnd.isAfter(visitEnd) ? membershipEnd : visitEnd;
+        if (!validUntil(userId, storeId).isAfter(timeProvider.now())) {
+            GymUser user = userMapper.selectById(userId);
+            if (user == null || user.getMemberNo() == null || user.getMemberNo().isBlank()) {
+                return;
+            }
+            suspendPerson(userId, user.getMemberNo(), enabled(storeId));
+            return;
+        }
+        syncMembership(userId, storeId, action);
+    }
+
+    /** 把库里每个有会员编号的人从全部在线闸机删掉。有人但闸机不在线则失败，不继续清库。 */
+    public void removeEveryone() {
+        List<GymUser> users = userMapper.selectList(new LambdaQueryWrapper<GymUser>()
+                .isNotNull(GymUser::getMemberNo)
+                .ne(GymUser::getMemberNo, ""));
+        if (users.isEmpty()) {
+            return;
+        }
+        List<GateDevice> devices = gateDeviceMapper.selectList(new LambdaQueryWrapper<GateDevice>()
+                .eq(GateDevice::getStatus, "ENABLED"));
+        devices = devices.stream()
+                .filter(device -> device.getDeviceSn() != null && !device.getDeviceSn().isBlank())
+                .toList();
+        if (devices.isEmpty()) {
+            return;
+        }
+        ensureOnline(devices, "清除数据");
+        List<ReentrantLock> acquired = lockAll(devices);
+        try {
+            for (GateDevice device : devices) {
+                for (GymUser user : users) {
+                    deleteOnDevice(device, user.getMemberNo(), "清除数据");
+                }
+            }
+        } finally {
+            unlockAll(acquired);
+        }
     }
 
     private void enqueue(long userId, long deviceId) {

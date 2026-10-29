@@ -52,11 +52,6 @@ export function createOrder(body: {
   });
 }
 
-export function mockPay(orderId: string) {
-  // 测试逻辑：服务端 mockPay 为 true 时走模拟支付。见 开发文档/前端测试逻辑-待删除.md
-  return request<OrderRow>({ url: `/api/mp/orders/${orderId}/mock-pay`, method: "POST" });
-}
-
 export function orderDetail(orderId: string) {
   return request<OrderRow>({ url: `/api/mp/orders/${orderId}` });
 }

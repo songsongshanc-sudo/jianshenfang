@@ -7,7 +7,7 @@ const baseURL =
   // #ifndef H5
   "http://59.110.11.215";
   // #endif
-  // 与 http.ts 同一规则。见 开发文档/前端测试逻辑-待删除.md
+  // 与 http.ts 同一规则。H5 用当前网址，微信小程序用测试云。
 
 export type EnterResult = {
   tokenType: string;
@@ -37,8 +37,8 @@ export function clearSession() {
 }
 
 export async function silentEnter(): Promise<EnterResult | null> {
-  const code = await loginCode();
   try {
+    const code = await loginCode();
     const data = await request<EnterResult>({
       url: "/api/mp/auth/enter",
       method: "POST",
@@ -52,32 +52,19 @@ export async function silentEnter(): Promise<EnterResult | null> {
 }
 
 function loginCode(): Promise<string> {
-  // #ifdef H5
-  return Promise.resolve(h5DeviceCode());
-  // #endif
-  // #ifndef H5
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     uni.login({
       provider: "weixin",
       success(res) {
-        resolve(res.code || `local${Date.now()}`);
+        if (res.code) {
+          resolve(res.code);
+          return;
+        }
+        reject(new Error("没有微信登录凭证"));
       },
-      fail() {
-        resolve(`local${Date.now()}`);
-      },
+      fail: reject,
     });
   });
-  // #endif
-}
-
-function h5DeviceCode() {
-  const saved = uni.getStorageSync("h5DeviceCode") as string;
-  if (saved && /^h5[a-z0-9]{8,40}$/.test(saved)) {
-    return saved;
-  }
-  const next = `h5${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
-  uni.setStorageSync("h5DeviceCode", next);
-  return next;
 }
 
 export function privacyUrl() {

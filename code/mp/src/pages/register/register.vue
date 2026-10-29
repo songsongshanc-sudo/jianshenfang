@@ -43,22 +43,11 @@ import { complete, facePreviewBase64, presignFace, saveSession, uploadFace, veri
 const name = ref("");
 const preview = ref("");
 const faceReady = ref(false);
-const localTest = ref(false);
 const submitting = ref(false);
-
-function allowLocal() {
-  // 测试逻辑：微信正式版为 false，开发版/体验版/网页调试为 true。见 开发文档/前端测试逻辑-待删除.md
-  try {
-    return uni.getAccountInfoSync().miniProgram.envVersion !== "release";
-  } catch {
-    return true;
-  }
-}
 
 const canSubmit = computed(() => faceReady.value && String(name.value ?? "").trim().length > 0 && !submitting.value);
 
 onLoad(() => {
-  localTest.value = allowLocal();
   const tokenType = uni.getStorageSync("mpTokenType");
   if (tokenType === "ACCESS") {
     uni.switchTab({ url: "/pages/home/home" });
@@ -69,14 +58,7 @@ onLoad(() => {
   }
 });
 
-async function shoot() {
-  if (localTest.value) {
-    // 测试逻辑：不打开相机，上传固定测试字节。见 开发文档/前端测试逻辑-待删除.md
-    const bytes = new Uint8Array(64);
-    bytes.fill(8);
-    await finishFace(bytes.buffer);
-    return;
-  }
+function shoot() {
   uni.chooseImage({
     count: 1,
     sourceType: ["camera"],
@@ -88,7 +70,13 @@ async function shoot() {
         success(file) {
           void finishFace(file.data as ArrayBuffer);
         },
+        fail() {
+          uni.showToast({ title: "读取照片失败", icon: "none" });
+        },
       });
+    },
+    fail() {
+      uni.showToast({ title: "没有打开相机", icon: "none" });
     },
   });
 }

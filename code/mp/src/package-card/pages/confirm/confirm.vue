@@ -23,12 +23,7 @@
 
     <view class="footer">
       <button
-        v-if="!paid && created?.mockPay && created.status === 'PENDING'"
-        type="primary"
-        @click="pay"
-      >模拟支付成功</button>
-      <button
-        v-else-if="!paid && created && !created.mockPay && created.status === 'PENDING'"
+        v-if="!paid && created && created.status === 'PENDING'"
         type="primary"
         :disabled="submitting"
         @click="continuePay"
@@ -49,8 +44,6 @@ import {
   createOrder,
   currentAgreement,
   currentServiceGuide,
-  mockPay,
-  orderDetail,
   requestWxPay,
   waitUntilPaid,
   type AgreementDoc,
@@ -68,7 +61,6 @@ const checked = ref(false);
 const created = ref<CreatedOrder | null>(null);
 const paid = ref(false);
 const submitting = ref(false);
-const paying = ref(false);
 const idempotencyKey = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
 const guideHtml = computed(() => fitRichHtml(guide.value?.content));
@@ -135,9 +127,7 @@ async function submit() {
       paid.value = true;
       return;
     }
-    if (!created.value.mockPay) {
-      await finishWxPay();
-    }
+    await finishWxPay();
   } catch {
     // 订单已创建时保留，可点「继续支付」
   } finally {
@@ -146,7 +136,7 @@ async function submit() {
 }
 
 async function continuePay() {
-  if (!created.value || created.value.mockPay || submitting.value || !card.value || !agreement.value) {
+  if (!created.value || submitting.value || !card.value || !agreement.value) {
     return;
   }
   submitting.value = true;
@@ -184,24 +174,6 @@ async function finishWxPay() {
   }
 }
 
-async function pay() {
-  // 测试逻辑：按钮「模拟支付成功」。见 开发文档/前端测试逻辑-待删除.md
-  if (!created.value || paying.value) {
-    return;
-  }
-  paying.value = true;
-  try {
-    const detail = await mockPay(String(created.value.orderId));
-    const fresh = await orderDetail(String(detail.id || created.value.orderId));
-    created.value = { ...created.value, status: fresh.status };
-    paid.value = fresh.status === "PAID";
-    if (paid.value) {
-      uni.showToast({ title: "会员已生效", icon: "none" });
-    }
-  } finally {
-    paying.value = false;
-  }
-}
 </script>
 
 <style scoped>

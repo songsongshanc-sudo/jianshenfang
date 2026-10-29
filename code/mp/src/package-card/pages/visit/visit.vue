@@ -22,7 +22,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { onShow } from "@dcloudio/uni-app";
-import { createVisitOrder, mockVisitPay, visitOffer, type VisitOffer } from "../../../api/visit";
+import { createVisitOrder, visitOffer, type VisitOffer } from "../../../api/visit";
 import { requestWxPay, waitUntilPaid } from "../../../api/order";
 
 const offer = ref<VisitOffer | null>(null);
@@ -44,13 +44,8 @@ async function buy() {
   try {
     const key = `visit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const created = await createVisitOrder(storeId.value, key);
-    if (created.mockPay) {
-      // 测试逻辑：服务端返回 mockPay 时不调起微信支付。见 开发文档/前端测试逻辑-待删除.md
-      await mockVisitPay(created.orderId);
-    } else {
-      await requestWxPay(created);
-      await waitUntilPaid(created.orderId);
-    }
+    await requestWxPay(created);
+    await waitUntilPaid(created.orderId);
     uni.showToast({ title: "已开通参观", icon: "none" });
     setTimeout(() => uni.navigateBack(), 500);
   } catch (error: any) {

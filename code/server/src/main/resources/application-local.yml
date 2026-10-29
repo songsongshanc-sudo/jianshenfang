@@ -22,5 +22,3 @@ knife4j:
 gym:
   pay:
     mock-enabled: true
-  sms:
-    fixed-code: "246810"

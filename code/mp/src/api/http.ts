@@ -14,7 +14,7 @@ const baseURL =
   // #ifndef H5
   "http://59.110.11.215";
   // #endif
-  // 非 H5 连测试云。H5 和页面放在同一台服务器上，用当前网址。见 开发文档/前端测试逻辑-待删除.md
+  // 非 H5 连测试云。H5 和页面放在同一台服务器上，用当前网址。
 
 export function request<T>(options: UniApp.RequestOptions): Promise<T> {
   return new Promise((resolve, reject) => {

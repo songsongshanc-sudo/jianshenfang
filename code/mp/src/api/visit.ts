@@ -53,8 +53,3 @@ export function createVisitOrder(storeId: string, idempotencyKey: string) {
 export function refundVisit() {
   return request<MyVisit>({ url: "/api/mp/visit/refund", method: "POST" });
 }
-
-export function mockVisitPay(orderId: string) {
-  // 测试逻辑：参观押金的模拟支付。见 开发文档/前端测试逻辑-待删除.md
-  return request({ url: `/api/mp/visit/orders/${orderId}/mock-pay`, method: "POST" });
-}

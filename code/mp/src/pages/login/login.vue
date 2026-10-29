@@ -49,7 +49,6 @@ import { computed, ref } from "vue";
 import { onLoad } from "@dcloudio/uni-app";
 import { loginByPhone, loginBySms, privacyUrl, saveSession, sendSms, silentEnter, type LoginResult } from "../../api/auth";
 
-const DEV_CODE = "246810"; // 测试逻辑：仅非微信正式版预填。见 开发文档/前端测试逻辑-待删除.md
 const agreed = ref(false);
 const showSms = ref(false);
 const phone = ref("");
@@ -57,26 +56,12 @@ const smsCode = ref("");
 const sending = ref(false);
 const smsOk = ref(false);
 const privacy = ref("");
-const localTest = ref(false);
-
-function allowLocal() {
-  // 测试逻辑：微信正式版为 false，开发版/体验版/网页调试为 true。见 开发文档/前端测试逻辑-待删除.md
-  try {
-    return uni.getAccountInfoSync().miniProgram.envVersion !== "release";
-  } catch {
-    return true;
-  }
-}
 
 const phoneText = computed(() => String(phone.value ?? "").replace(/\D/g, ""));
 const codeText = computed(() => String(smsCode.value ?? "").replace(/\D/g, ""));
 const canSmsLogin = computed(() => agreed.value && /^1\d{10}$/.test(phoneText.value) && codeText.value.length >= 4);
 
 onLoad(async () => {
-  localTest.value = allowLocal();
-  if (localTest.value) {
-    smsCode.value = DEV_CODE;
-  }
   const entered = await silentEnter();
   if (entered?.tokenType === "ACCESS") {
     uni.switchTab({ url: "/pages/home/home" });

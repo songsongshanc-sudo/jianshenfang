@@ -37,7 +37,6 @@ gym:
   wx:
     mp-appid: ${WX_MP_APPID:}
     mp-secret: ${WX_MP_SECRET:}
-    h5-login: ${MP_H5_LOGIN:false}
   pay:
     mock-enabled: false
     mch-id: ${WX_PAY_MCH_ID:}

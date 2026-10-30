@@ -16,7 +16,7 @@ import java.util.Comparator;
 import java.util.List;
 
 /**
- * 总账号长按清空。上线前必须删掉入口，见开发文档/发布文档.md。
+ * 总账号长按清空。上线前必须删掉入口，见开发文档/正式服务器配置.md。
  */
 @Service
 public class DataWipeService {
